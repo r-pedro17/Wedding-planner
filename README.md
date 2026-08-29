@@ -3,7 +3,7 @@
 A calm shared workspace for one couple to manage a wedding budget, tasks, and
 vendors. The app uses Next.js, Clerk, and Convex; Convex is the source of truth.
 
-Live app: [wedding-planner-delta-liart.vercel.app](https://wedding-planner-delta-liart.vercel.app)
+Live app: [wedding.ragoczypedro.nl](https://wedding.ragoczypedro.nl)
 
 ## Local setup
 
