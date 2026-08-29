@@ -12,10 +12,6 @@ export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLS
   return <select className={cn(base, "h-[50px]", className)} {...props} />;
 }
 
-export function Textarea({ className, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn(base, className)} {...props} />;
-}
-
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1.5">

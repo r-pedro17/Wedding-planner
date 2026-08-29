@@ -5,6 +5,7 @@ import { requireMembership } from "./lib/auth";
 import { computeTotals, byCategory, remainingCents, upcomingPayments } from "./lib/budget";
 import { assertDateOnly } from "./lib/dates";
 import { assertNonNegativeCents } from "./lib/money";
+import { requireWeddingVendor } from "./lib/vendors";
 
 export const list = query({
   args: { weddingId: v.id("weddings") },
@@ -70,8 +71,10 @@ export const addItem = mutation({
     status: v.optional(budgetItemStatus),
     notes: v.optional(v.string()),
   },
+  returns: v.id("budgetItems"),
   handler: async (ctx, args) => {
     await requireMembership(ctx, args.weddingId);
+    await requireWeddingVendor(ctx, args.vendorId, args.weddingId);
     if (args.dueDate) assertDateOnly(args.dueDate, "dueDate");
     assertNonNegativeCents(args.plannedCents, "plannedCents");
     if (args.quotedCents !== undefined) assertNonNegativeCents(args.quotedCents, "quotedCents");
@@ -100,10 +103,12 @@ export const updateItem = mutation({
     status: v.optional(budgetItemStatus),
     notes: v.optional(v.string()),
   },
+  returns: v.id("budgetItems"),
   handler: async (ctx, { itemId, ...patch }) => {
     const item = await ctx.db.get(itemId);
     if (!item) throw new Error("Budget item not found");
     await requireMembership(ctx, item.weddingId);
+    await requireWeddingVendor(ctx, patch.vendorId, item.weddingId);
     if (patch.dueDate) assertDateOnly(patch.dueDate, "dueDate");
     for (const field of ["plannedCents", "quotedCents", "committedCents", "paidCents"] as const) {
       const value = patch[field];

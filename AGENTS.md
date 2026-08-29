@@ -16,9 +16,11 @@ rules).
 
 ## Commands
 
-Node 24 is required and is **not on PATH** — it lives at `D:\node24`. Prefix
-shell commands with `export PATH="/d/node24:$PATH"`. Package manager is **pnpm**.
-Run everything from the repository root.
+Node 24 is required (see `.node-version`) and the package manager is **pnpm**.
+Run `pnpm install` once, then run commands from the repository root. On this
+Windows workstation, if Node is not already on `PATH`, use
+`$env:Path = 'D:\node24;' + $env:Path` in PowerShell or
+`export PATH="/d/node24:$PATH"` in Git Bash.
 
 - `pnpm dev` — Next.js dev server (`localhost:3000`)
 - `pnpm build` — production build
@@ -27,6 +29,7 @@ Run everything from the repository root.
 - `pnpm typecheck` — strict `tsc --noEmit` (includes `convex/`)
 - `pnpm test` — Vitest run
 - `pnpm exec convex dev` — Convex dev deployment + codegen (needs browser login)
+- `pnpm exec convex codegen` — regenerate Convex types without keeping dev running
 - `pnpm dlx clerk@latest doctor --json` — Clerk CLI health check. In Git Bash,
   pass API paths with a leading double slash (`clerk api //jwt_templates`) or
   MSYS rewrites them into Windows paths and every call 404s.

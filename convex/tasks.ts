@@ -3,6 +3,7 @@ import { mutation, query } from "./_generated/server";
 import { taskStatus } from "./schema";
 import { requireMembership } from "./lib/auth";
 import { assertDateOnly, dueState } from "./lib/dates";
+import { requireWeddingVendor } from "./lib/vendors";
 
 export const list = query({
   args: { weddingId: v.id("weddings"), status: v.optional(taskStatus) },
@@ -34,8 +35,10 @@ export const create = mutation({
     status: v.optional(taskStatus),
     vendorId: v.optional(v.id("vendors")),
   },
+  returns: v.id("tasks"),
   handler: async (ctx, args) => {
     await requireMembership(ctx, args.weddingId);
+    await requireWeddingVendor(ctx, args.vendorId, args.weddingId);
     if (args.dueDate) assertDateOnly(args.dueDate, "dueDate");
     if (args.title.trim() === "") throw new Error("Task title is required");
     return await ctx.db.insert("tasks", { ...args, status: args.status ?? "todo" });
@@ -52,10 +55,12 @@ export const update = mutation({
     status: v.optional(taskStatus),
     vendorId: v.optional(v.id("vendors")),
   },
+  returns: v.id("tasks"),
   handler: async (ctx, { taskId, ...patch }) => {
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
     await requireMembership(ctx, task.weddingId);
+    await requireWeddingVendor(ctx, patch.vendorId, task.weddingId);
     if (patch.dueDate) assertDateOnly(patch.dueDate, "dueDate");
     await ctx.db.patch(taskId, patch);
     return taskId;

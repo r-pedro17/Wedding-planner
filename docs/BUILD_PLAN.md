@@ -2,11 +2,25 @@
 
 ## Goal
 
-Build the complete V1 in one development pass.
+Build the complete V1 as one coherent vertical slice.
 
 The app is only ready for handoff when Dashboard + Budget + Planner + Eve work together against persistent Convex data.
 
 The sections below are build stages, not separate product releases.
+
+## Current implementation status
+
+As of August 2026, the application spine, authentication, persistent Convex
+data, Dashboard, basic Budget, basic Planner, vendor records, and couple sharing
+are implemented. Pure money, date, and budget logic has automated coverage, and
+the production Next.js build passes.
+
+The non-Eve UI is not yet a complete V1: budget items, tasks, and vendors do not
+offer all documented edit/link fields; destructive UI actions need safer
+confirmation and error handling; and Convex functions plus full browser flows do
+not yet have automated coverage. Treat every unchecked proof point below as a
+requirement to verify, not as a claim that it has passed. Eve exists in the repo
+but remains outside the current stabilization pass.
 
 ---
 
