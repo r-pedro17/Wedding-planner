@@ -31,8 +31,8 @@ build/
 # --- eve (generated build cache / compiled manifests) ---
 .eve/
 
-# --- Convex (generated code + local state) ---
-convex/_generated/
+# --- Convex (generated client code is tracked; AI/local state is not) ---
+convex/_generated/ai/
 .convex/
 
 # --- Vercel ---
