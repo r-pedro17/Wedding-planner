@@ -32,12 +32,14 @@ then use Dashboard, Budget, Planner, and Settings.
 ## Verify
 
 ```bash
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm build
-pnpm dlx oxlint@latest . --deny-warnings
+pnpm verify
+pnpm fallow
 ```
+
+Pull requests and `main` run the same clean-checkout quality contract in GitHub
+Actions. Dependency audits and the changed-code Fallow gate are separate jobs so
+one failure cannot hide another signal. See [SECURITY.md](SECURITY.md) for trust
+boundaries, secret handling, deployment controls, and known gaps.
 
 Read [the documentation index](docs/README.md) for product scope, current build
 status, and engineering rules. Coding agents should start with [AGENTS.md](AGENTS.md).

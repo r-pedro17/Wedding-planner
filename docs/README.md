@@ -9,6 +9,7 @@ Durable build context for the Wedding Planner application.
 3. `PRODUCT_SPEC.md` — how the product should behave.
 4. `BUILD_PLAN.md` — the build sequence, current status, and proof points.
 5. `ENGINEERING.md` — money, dates, Eve, UI, testing, and workflow rules.
+6. `../SECURITY.md` — trust boundaries, deployment controls, and known gaps.
 
 ## Core rule
 

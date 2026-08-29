@@ -26,8 +26,11 @@ Windows workstation, if Node is not already on `PATH`, use
 - `pnpm build` — production build
 - `pnpm start` — serve the production build
 - `pnpm lint` — ESLint, zero warnings tolerated
+- `pnpm lint:ox` — Oxlint, zero warnings tolerated
 - `pnpm typecheck` — strict `tsc --noEmit` (includes `convex/`)
 - `pnpm test` — Vitest run
+- `pnpm fallow` — full structural health report (JSON)
+- `pnpm verify` — the local equivalent of the required CI quality job
 - `pnpm exec convex dev` — Convex dev deployment + codegen (needs browser login)
 - `pnpm exec convex codegen` — regenerate Convex types without keeping dev running
 - `pnpm dlx clerk@latest doctor --json` — Clerk CLI health check. In Git Bash,
@@ -42,6 +45,8 @@ Windows workstation, if Node is not already on `PATH`, use
 - `agent/` — Eve: `agent.ts`, `instructions.md`, `tools/` (`budget.ts`, `planner.ts`, `vendors.ts`), `skills/`, `lib/convex.ts` (Convex client), `channels/`. Framework files owned by `eve` — leave scaffold alone
 - `tests/` — Vitest specs for the domain logic in `convex/lib/`
 - `docs/` — durable product + engineering context
+- `.github/` — clean-checkout CI workflows and Dependabot policy
+- `SECURITY.md` — trust boundaries, required controls, incident response, and security proof gaps
 - `_tmp/` — scratch files we create (git-ignored); `.local/` — local cache/system files (git-ignored)
 
 ## Conventions
@@ -56,6 +61,9 @@ Windows workstation, if Node is not already on `PATH`, use
 - Smallest complete change → focused tests → broader tests → verify the real user flow. No speculative refactors. No abstraction before two real call sites. Obvious code over clever.
 - **V1 scope is Dashboard + Budget + Planner + Eve only.** Not in V1: guest list, RSVP, seating, wedding website, registry, marketplace, payments, email ingestion, native mobile, proactive Eve automation. Don't expand scope; don't add planning docs.
 - `.env.local` is never committed; keep `.env.example` current.
+- GitHub CI is the clean-checkout contract: quality, dependency health, and
+  changed-code Fallow checks run independently. Keep ordinary CI free of live
+  Clerk, Convex, Vercel, and Hostinger credentials. See `SECURITY.md`.
 - Auth: Clerk issues the JWT, Convex verifies it. The template named `convex`
   must carry `{"aud": "convex"}`, and `CLERK_JWT_ISSUER_DOMAIN` lives on the
   Convex deployment, not in `.env.local`. Get either wrong and the app is

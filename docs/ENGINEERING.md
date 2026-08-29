@@ -33,6 +33,14 @@ For each change:
 Inspect → smallest complete change → focused tests → broader tests → verify the real user flow → continue
 ```
 
+`pnpm verify` is the local clean-build contract. GitHub Actions repeats it from
+a frozen lockfile and reports dependency audits and changed-code Fallow findings
+as independent jobs. Ordinary CI must remain deterministic and secret-free: it
+does not connect to Clerk, a live Convex deployment, Vercel, Hostinger, or Eve.
+Provider-backed and browser proofs are explicit environment checks, not hidden
+inside the compile/test gate. Security boundaries and response procedures live
+in `../SECURITY.md`.
+
 - No large speculative refactors.
 - No abstraction before there are at least two real places that need it.
 - Prefer obvious code over clever code.
