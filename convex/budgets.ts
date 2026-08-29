@@ -1,0 +1,143 @@
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+import { budgetItemStatus } from "./schema";
+import { requireMembership } from "./lib/auth";
+import { computeTotals, byCategory, remainingCents, upcomingPayments } from "./lib/budget";
+import { assertDateOnly } from "./lib/dates";
+import { assertNonNegativeCents } from "./lib/money";
+
+export const list = query({
+  args: { weddingId: v.id("weddings") },
+  handler: async (ctx, { weddingId }) => {
+    await requireMembership(ctx, weddingId);
+    const wedding = await ctx.db.get(weddingId);
+    if (!wedding) throw new Error("Wedding not found");
+    const items = await ctx.db
+      .query("budgetItems")
+      .withIndex("by_wedding", (q) => q.eq("weddingId", weddingId))
+      .collect();
+    return {
+      currency: wedding.currency,
+      items: items.map((item) => ({ ...item, remainingCents: remainingCents(item) })),
+      totals: computeTotals(items, wedding.totalBudgetCents),
+      categories: byCategory(items),
+    };
+  },
+});
+
+export const upcoming = query({
+  args: { weddingId: v.id("weddings"), days: v.optional(v.number()) },
+  handler: async (ctx, { weddingId, days }) => {
+    await requireMembership(ctx, weddingId);
+    const items = await ctx.db
+      .query("budgetItems")
+      .withIndex("by_wedding", (q) => q.eq("weddingId", weddingId))
+      .collect();
+    return upcomingPayments(items, days ?? 30);
+  },
+});
+
+export const categories = query({
+  args: { weddingId: v.id("weddings") },
+  handler: async (ctx, { weddingId }) => {
+    await requireMembership(ctx, weddingId);
+    return await ctx.db
+      .query("budgetCategories")
+      .withIndex("by_wedding", (q) => q.eq("weddingId", weddingId))
+      .collect();
+  },
+});
+
+export const addCategory = mutation({
+  args: { weddingId: v.id("weddings"), name: v.string() },
+  handler: async (ctx, { weddingId, name }) => {
+    await requireMembership(ctx, weddingId);
+    return await ctx.db.insert("budgetCategories", { weddingId, name });
+  },
+});
+
+export const addItem = mutation({
+  args: {
+    weddingId: v.id("weddings"),
+    name: v.string(),
+    category: v.string(),
+    plannedCents: v.number(),
+    quotedCents: v.optional(v.number()),
+    committedCents: v.optional(v.number()),
+    paidCents: v.optional(v.number()),
+    dueDate: v.optional(v.string()),
+    vendorId: v.optional(v.id("vendors")),
+    status: v.optional(budgetItemStatus),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await requireMembership(ctx, args.weddingId);
+    if (args.dueDate) assertDateOnly(args.dueDate, "dueDate");
+    assertNonNegativeCents(args.plannedCents, "plannedCents");
+    if (args.quotedCents !== undefined) assertNonNegativeCents(args.quotedCents, "quotedCents");
+    if (args.committedCents !== undefined) assertNonNegativeCents(args.committedCents, "committedCents");
+    const paidCents = assertNonNegativeCents(args.paidCents ?? 0, "paidCents");
+
+    return await ctx.db.insert("budgetItems", {
+      ...args,
+      paidCents,
+      status: args.status ?? "idea",
+    });
+  },
+});
+
+export const updateItem = mutation({
+  args: {
+    itemId: v.id("budgetItems"),
+    name: v.optional(v.string()),
+    category: v.optional(v.string()),
+    plannedCents: v.optional(v.number()),
+    quotedCents: v.optional(v.number()),
+    committedCents: v.optional(v.number()),
+    paidCents: v.optional(v.number()),
+    dueDate: v.optional(v.string()),
+    vendorId: v.optional(v.id("vendors")),
+    status: v.optional(budgetItemStatus),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, { itemId, ...patch }) => {
+    const item = await ctx.db.get(itemId);
+    if (!item) throw new Error("Budget item not found");
+    await requireMembership(ctx, item.weddingId);
+    if (patch.dueDate) assertDateOnly(patch.dueDate, "dueDate");
+    for (const field of ["plannedCents", "quotedCents", "committedCents", "paidCents"] as const) {
+      const value = patch[field];
+      if (value !== undefined) assertNonNegativeCents(value, field);
+    }
+    await ctx.db.patch(itemId, patch);
+    return itemId;
+  },
+});
+
+/** Record a payment against an item. Amounts add up; totals stay derived. */
+export const recordPayment = mutation({
+  args: { itemId: v.id("budgetItems"), amountCents: v.number() },
+  handler: async (ctx, { itemId, amountCents }) => {
+    const item = await ctx.db.get(itemId);
+    if (!item) throw new Error("Budget item not found");
+    await requireMembership(ctx, item.weddingId);
+    assertNonNegativeCents(amountCents, "amountCents");
+    const paidCents = item.paidCents + amountCents;
+    const owed = item.committedCents ?? item.plannedCents;
+    await ctx.db.patch(itemId, {
+      paidCents,
+      status: paidCents >= owed ? "paid" : item.status === "idea" ? "booked" : item.status,
+    });
+    return { itemId, paidCents };
+  },
+});
+
+export const removeItem = mutation({
+  args: { itemId: v.id("budgetItems") },
+  handler: async (ctx, { itemId }) => {
+    const item = await ctx.db.get(itemId);
+    if (!item) return;
+    await requireMembership(ctx, item.weddingId);
+    await ctx.db.delete(itemId);
+  },
+});

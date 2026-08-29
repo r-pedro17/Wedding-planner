@@ -1,0 +1,64 @@
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# --- Our working areas (per repo convention) ---
+# _tmp/  = scratch files we create
+# .local/ = local cache and system files
+# (ignore contents, keep the folder in git via .gitkeep)
+_tmp/*
+.local/*
+!_tmp/.gitkeep
+!.local/.gitkeep
+
+# --- Secrets / environment ---
+.env
+.env.*
+!.env.example
+*.pem
+
+# --- Next.js ---
+.next/
+out/
+next-env.d.ts
+
+# --- Build output ---
+dist/
+build/
+*.tsbuildinfo
+
+# --- eve (generated build cache / compiled manifests) ---
+.eve/
+
+# --- Convex (generated code + local state) ---
+convex/_generated/
+.convex/
+
+# --- Vercel ---
+.vercel/
+
+# --- Test / coverage ---
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# --- Editors / OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- Installed agent skills (re-installable via skills-lock.json) ---
+.claude/skills/
+.agents/
