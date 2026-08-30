@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { currentUserId, currentWeddingId, requireMembership, requireUserId } from "./lib/auth";
+import {
+  currentUserId,
+  currentWeddingId,
+  requireMembership,
+  requireOwner,
+  requireUserId,
+} from "./lib/auth";
 import { computeTotals, upcomingPayments } from "./lib/budget";
 import { daysBetween, dueState, today } from "./lib/dates";
 
@@ -104,11 +110,14 @@ export const members = query({
   },
 });
 
-/** Add a partner by Clerk user id. Both roles can manage wedding data in V1. */
+/**
+ * Add a partner by Clerk user id. Owner-only: both roles can manage wedding
+ * data in V1, but only the owner decides who is in the wedding.
+ */
 export const addMember = mutation({
   args: { weddingId: v.id("weddings"), clerkUserId: v.string() },
   handler: async (ctx, { weddingId, clerkUserId }) => {
-    await requireMembership(ctx, weddingId);
+    await requireOwner(ctx, weddingId);
     const existing = await ctx.db
       .query("memberships")
       .withIndex("by_user_and_wedding", (q) =>

@@ -11,6 +11,7 @@ export const OUTSIDER_SUBJECT = "fixture-outsider";
 export const NOT_SIGNED_IN = "Not signed in";
 export const NO_ACCESS = "You do not have access to this wedding";
 export const WRONG_WEDDING_VENDOR = "Vendor does not belong to this wedding";
+export const NOT_OWNER = "Only the wedding owner can do this";
 
 export type Fixture = {
   t: ReturnType<typeof convexTest>;

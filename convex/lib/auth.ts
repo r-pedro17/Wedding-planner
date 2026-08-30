@@ -31,6 +31,17 @@ export async function requireMembership(
   return { clerkUserId, membership };
 }
 
+/**
+ * Stricter than `requireMembership`: the caller must hold the owner role.
+ * V1 gives both roles the run of the wedding's data, so this guards only the
+ * membership list itself.
+ */
+export async function requireOwner(ctx: QueryCtx | MutationCtx, weddingId: Id<"weddings">) {
+  const { clerkUserId, membership } = await requireMembership(ctx, weddingId);
+  if (membership.role !== "owner") throw new Error("Only the wedding owner can do this");
+  return { clerkUserId, membership };
+}
+
 /** The wedding the signed-in user belongs to, or null. V1 is one wedding. */
 export async function currentWeddingId(ctx: QueryCtx | MutationCtx): Promise<Id<"weddings"> | null> {
   const clerkUserId = await currentUserId(ctx);
