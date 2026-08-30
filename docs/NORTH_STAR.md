@@ -72,6 +72,8 @@ Do not build these unless the scope is deliberately changed:
 5. Keep the interface simpler than a spreadsheet.
 6. Do not add infrastructure until the current stack cannot solve the problem cleanly.
 7. Prefer one obvious workflow over many configurable workflows.
+8. Important changes are attributable to the authenticated person, including changes made through Eve.
+9. Private wedding data must be isolated, observable without being copied into logs, and recoverable from a tested backup.
 
 ## Stack
 
@@ -84,7 +86,7 @@ Do not build these unless the scope is deliberately changed:
 - Eve
 - Vercel AI Gateway
 - Convex File Storage if files are needed
-- Sentry only when useful for production errors
+- Axiom for privacy-minimal application and Eve observability
 
 ## Definition of done
 
@@ -102,3 +104,7 @@ V1 is done when a user can:
 10. Ask Eve about the wedding.
 11. Ask Eve to change wedding data and see the UI update immediately.
 12. Refresh or reopen the app and see the same correct state.
+13. Share the wedding with a partner without exchanging provider-specific user ids.
+14. Prevent an unrelated signed-in user from reading or changing the wedding.
+15. Have Eve act only with the signed-in person's authority and attribute its changes to that person.
+16. Recover the wedding from a successfully tested backup.

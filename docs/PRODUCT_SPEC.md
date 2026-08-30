@@ -165,6 +165,8 @@ Eve should also handle commands such as:
 
 ```text
 User
+  ↓ authenticated as that user
+Clerk
   ↓
 Eve
   ↓
@@ -176,6 +178,9 @@ UI
 ```
 
 Eve never writes directly to hidden memory and treats that as wedding state.
+Eve acts with the signed-in person's short-lived delegated identity. It is not a
+separate wedding member and does not use a permanent couple token. Convex still
+decides whether that person belongs to the wedding.
 
 ### Eve tool surface
 
@@ -227,7 +232,7 @@ budgetItems
 tasks
 vendors
 guests
-activityLog
+auditEvents
 ```
 
 ### Relationship overview
@@ -240,7 +245,7 @@ wedding
 ├── tasks
 ├── vendors
 ├── guests
-└── activityLog
+└── auditEvents
 ```
 
 Every wedding-owned record should include `weddingId`.
@@ -262,9 +267,27 @@ Minimum membership roles:
 
 Both can manage normal wedding data in V1.
 
+The owner adds one partner through a normal invitation flow, such as an
+expiring single-use email link or invite code. The user must not need to find or
+paste a provider-specific Clerk user id. Advanced roles and organizations remain
+out of scope.
+
 ---
 
-## 10. Suggested repository shape
+## 10. Activity history
+
+Important successful changes create a small, immutable activity record. It
+identifies who acted, whether the change came through the normal UI or Eve, the
+kind of action, and the affected record. It does not copy prompts, notes,
+contacts, amounts, or full before/after values.
+
+Activity history is wedding-scoped and protected by the same membership checks
+as the rest of the app. A complex activity-management screen is not required for
+V1; the durable record and its security proof are required.
+
+---
+
+## 11. Suggested repository shape
 
 ```text
 wedding/
@@ -289,7 +312,7 @@ wedding/
 │   ├── tasks.ts
 │   ├── vendors.ts
 │   ├── guests.ts
-│   └── activity.ts
+│   └── auditEvents.ts
 │
 ├── agent/
 │   ├── instructions.md
@@ -315,7 +338,7 @@ The exact folders may change to match the frameworks, but preserve the separatio
 
 ---
 
-## 11. UX rules
+## 12. UX rules
 
 1. Mobile-friendly from the beginning.
 2. Large obvious controls.
@@ -330,7 +353,7 @@ The exact folders may change to match the frameworks, but preserve the separatio
 
 ---
 
-## 12. Quality rules
+## 13. Quality rules
 
 Every important feature must have a simple proof that it works.
 
@@ -342,5 +365,8 @@ Examples:
 - Change budget item through UI → Eve reports the new value.
 - Partner opens wedding → sees same data.
 - Add or edit an invitation → total headcount updates; another wedding cannot read or change it.
+- Eve change → attributed to the signed-in person with Eve as the source.
+- Unrelated authenticated user → cannot read or change the wedding.
+- Backup snapshot → restored into an isolated deployment with relationships intact.
 
 Do not accept a feature because the UI renders. Test the complete user path.
