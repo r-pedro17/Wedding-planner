@@ -4,9 +4,11 @@ import { taskStatus } from "./schema";
 import { requireMembership } from "./lib/auth";
 import { assertDateOnly, dueState } from "./lib/dates";
 import { requireWeddingVendor } from "./lib/vendors";
+import { taskWithDueState } from "./lib/validators";
 
 export const list = query({
   args: { weddingId: v.id("weddings"), status: v.optional(taskStatus) },
+  returns: v.array(taskWithDueState),
   handler: async (ctx, { weddingId, status }) => {
     await requireMembership(ctx, weddingId);
     const rows = status
@@ -69,6 +71,7 @@ export const update = mutation({
 
 export const complete = mutation({
   args: { taskId: v.id("tasks") },
+  returns: v.id("tasks"),
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
@@ -80,6 +83,7 @@ export const complete = mutation({
 
 export const remove = mutation({
   args: { taskId: v.id("tasks") },
+  returns: v.null(),
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get(taskId);
     if (!task) return;

@@ -6,9 +6,21 @@ import { computeTotals, byCategory, remainingCents, upcomingPayments } from "./l
 import { assertDateOnly } from "./lib/dates";
 import { assertNonNegativeCents } from "./lib/money";
 import { requireWeddingVendor } from "./lib/vendors";
+import {
+  budgetCategoryDoc,
+  budgetItemDoc,
+  budgetItemWithRemaining,
+  budgetTotals,
+} from "./lib/validators";
 
 export const list = query({
   args: { weddingId: v.id("weddings") },
+  returns: v.object({
+    currency: v.string(),
+    items: v.array(budgetItemWithRemaining),
+    totals: budgetTotals,
+    categories: v.record(v.string(), budgetTotals),
+  }),
   handler: async (ctx, { weddingId }) => {
     await requireMembership(ctx, weddingId);
     const wedding = await ctx.db.get(weddingId);
@@ -28,6 +40,7 @@ export const list = query({
 
 export const upcoming = query({
   args: { weddingId: v.id("weddings"), days: v.optional(v.number()) },
+  returns: v.array(budgetItemDoc),
   handler: async (ctx, { weddingId, days }) => {
     await requireMembership(ctx, weddingId);
     const items = await ctx.db
@@ -40,6 +53,7 @@ export const upcoming = query({
 
 export const categories = query({
   args: { weddingId: v.id("weddings") },
+  returns: v.array(budgetCategoryDoc),
   handler: async (ctx, { weddingId }) => {
     await requireMembership(ctx, weddingId);
     return await ctx.db
@@ -51,6 +65,7 @@ export const categories = query({
 
 export const addCategory = mutation({
   args: { weddingId: v.id("weddings"), name: v.string() },
+  returns: v.id("budgetCategories"),
   handler: async (ctx, { weddingId, name }) => {
     await requireMembership(ctx, weddingId);
     return await ctx.db.insert("budgetCategories", { weddingId, name });
@@ -122,6 +137,7 @@ export const updateItem = mutation({
 /** Record a payment against an item. Amounts add up; totals stay derived. */
 export const recordPayment = mutation({
   args: { itemId: v.id("budgetItems"), amountCents: v.number() },
+  returns: v.object({ itemId: v.id("budgetItems"), paidCents: v.number() }),
   handler: async (ctx, { itemId, amountCents }) => {
     const item = await ctx.db.get(itemId);
     if (!item) throw new Error("Budget item not found");
@@ -139,6 +155,7 @@ export const recordPayment = mutation({
 
 export const removeItem = mutation({
   args: { itemId: v.id("budgetItems") },
+  returns: v.null(),
   handler: async (ctx, { itemId }) => {
     const item = await ctx.db.get(itemId);
     if (!item) return;

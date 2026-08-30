@@ -16,6 +16,7 @@ import type * as lib_budget from "../lib/budget.js";
 import type * as lib_dates from "../lib/dates.js";
 import type * as lib_guests from "../lib/guests.js";
 import type * as lib_money from "../lib/money.js";
+import type * as lib_validators from "../lib/validators.js";
 import type * as lib_vendors from "../lib/vendors.js";
 import type * as reminders from "../reminders.js";
 import type * as tasks from "../tasks.js";
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   "lib/dates": typeof lib_dates;
   "lib/guests": typeof lib_guests;
   "lib/money": typeof lib_money;
+  "lib/validators": typeof lib_validators;
   "lib/vendors": typeof lib_vendors;
   reminders: typeof reminders;
   tasks: typeof tasks;

@@ -2,9 +2,11 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { vendorStatus } from "./schema";
 import { requireMembership } from "./lib/auth";
+import { vendorDoc } from "./lib/validators";
 
 export const list = query({
   args: { weddingId: v.id("weddings") },
+  returns: v.array(vendorDoc),
   handler: async (ctx, { weddingId }) => {
     await requireMembership(ctx, weddingId);
     return await ctx.db
@@ -26,6 +28,7 @@ export const add = mutation({
     notes: v.optional(v.string()),
     status: v.optional(vendorStatus),
   },
+  returns: v.id("vendors"),
   handler: async (ctx, args) => {
     await requireMembership(ctx, args.weddingId);
     if (args.name.trim() === "") throw new Error("Vendor name is required");
@@ -45,6 +48,7 @@ export const update = mutation({
     notes: v.optional(v.string()),
     status: v.optional(vendorStatus),
   },
+  returns: v.id("vendors"),
   handler: async (ctx, { vendorId, ...patch }) => {
     const vendor = await ctx.db.get(vendorId);
     if (!vendor) throw new Error("Vendor not found");
@@ -58,6 +62,7 @@ export const update = mutation({
  * orphaning ids. Eve must confirm this with the user before calling it. */
 export const remove = mutation({
   args: { vendorId: v.id("vendors") },
+  returns: v.null(),
   handler: async (ctx, { vendorId }) => {
     const vendor = await ctx.db.get(vendorId);
     if (!vendor) return;

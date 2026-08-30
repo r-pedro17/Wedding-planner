@@ -9,10 +9,18 @@ import {
 } from "./lib/auth";
 import { computeTotals, upcomingPayments } from "./lib/budget";
 import { daysBetween, dueState, today } from "./lib/dates";
+import {
+  budgetItemDoc,
+  budgetTotals,
+  membershipDoc,
+  taskDoc,
+  weddingWithCountdown,
+} from "./lib/validators";
 
 /** The wedding for the signed-in user, or null when signed out / not set up. */
 export const current = query({
   args: {},
+  returns: v.union(weddingWithCountdown, v.null()),
   handler: async (ctx) => {
     const weddingId = await currentWeddingId(ctx);
     if (!weddingId) return null;
@@ -25,6 +33,18 @@ export const current = query({
 /** Everything the dashboard needs, in one read. */
 export const summary = query({
   args: { weddingId: v.id("weddings") },
+  returns: v.object({
+    wedding: weddingWithCountdown,
+    totals: budgetTotals,
+    upcomingPayments: v.array(budgetItemDoc),
+    upcomingTasks: v.array(taskDoc),
+    counts: v.object({
+      openTasks: v.number(),
+      overdueTasks: v.number(),
+      vendorsBooked: v.number(),
+      vendorsTotal: v.number(),
+    }),
+  }),
   handler: async (ctx, { weddingId }) => {
     await requireMembership(ctx, weddingId);
     const wedding = await ctx.db.get(weddingId);
@@ -73,6 +93,7 @@ export const create = mutation({
     currency: v.optional(v.string()),
     totalBudgetCents: v.number(),
   },
+  returns: v.id("weddings"),
   handler: async (ctx, args) => {
     const clerkUserId = await requireUserId(ctx);
     const weddingId = await ctx.db.insert("weddings", {
@@ -93,6 +114,7 @@ export const update = mutation({
     weddingDate: v.optional(v.string()),
     totalBudgetCents: v.optional(v.number()),
   },
+  returns: v.null(),
   handler: async (ctx, { weddingId, ...patch }) => {
     await requireMembership(ctx, weddingId);
     await ctx.db.patch(weddingId, patch);
@@ -101,6 +123,7 @@ export const update = mutation({
 
 export const members = query({
   args: { weddingId: v.id("weddings") },
+  returns: v.array(membershipDoc),
   handler: async (ctx, { weddingId }) => {
     await requireMembership(ctx, weddingId);
     return await ctx.db
@@ -116,6 +139,7 @@ export const members = query({
  */
 export const addMember = mutation({
   args: { weddingId: v.id("weddings"), clerkUserId: v.string() },
+  returns: v.id("memberships"),
   handler: async (ctx, { weddingId, clerkUserId }) => {
     await requireOwner(ctx, weddingId);
     const existing = await ctx.db
@@ -132,6 +156,7 @@ export const addMember = mutation({
 /** Keeps a `users` row in sync so the UI can show names. */
 export const ensureUser = mutation({
   args: { name: v.optional(v.string()), email: v.optional(v.string()) },
+  returns: v.union(v.id("users"), v.null()),
   handler: async (ctx, args) => {
     const clerkUserId = await currentUserId(ctx);
     if (!clerkUserId) return null;

@@ -4,10 +4,12 @@ import { requireMembership } from "./lib/auth";
 import { isDueWithin, dueState, today } from "./lib/dates";
 import { remainingCents } from "./lib/budget";
 import { formatCents } from "./lib/money";
+import { reminderDoc } from "./lib/validators";
 
 /** Open reminders for the dashboard. */
 export const list = query({
   args: { weddingId: v.id("weddings") },
+  returns: v.array(reminderDoc),
   handler: async (ctx, { weddingId }) => {
     await requireMembership(ctx, weddingId);
     const rows = await ctx.db
@@ -22,6 +24,7 @@ export const list = query({
 
 export const dismiss = mutation({
   args: { reminderId: v.id("reminders") },
+  returns: v.null(),
   handler: async (ctx, { reminderId }) => {
     const reminder = await ctx.db.get(reminderId);
     if (!reminder) return;
@@ -37,6 +40,7 @@ export const dismiss = mutation({
  */
 export const refreshAll = internalMutation({
   args: { withinDays: v.optional(v.number()) },
+  returns: v.object({ created: v.number() }),
   handler: async (ctx, { withinDays }) => {
     const days = withinDays ?? 14;
     const from = today();
@@ -93,6 +97,7 @@ export const refreshAll = internalMutation({
 /** Drop reminders whose subject is gone, paid, or completed. */
 export const pruneResolved = internalMutation({
   args: {},
+  returns: v.object({ removed: v.number() }),
   handler: async (ctx) => {
     const reminders = await ctx.db.query("reminders").collect();
     let removed = 0;
