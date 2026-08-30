@@ -4,15 +4,16 @@
 
 Build the complete V1 as one coherent vertical slice.
 
-The app is only ready for handoff when Dashboard + Budget + Planner + Eve work together against persistent Convex data.
+The app is only ready for handoff when Dashboard + Budget + Planner + Guests + Eve work together against persistent Convex data.
 
 The sections below are build stages, not separate product releases.
 
 ## Current implementation status
 
 As of August 2026, the application spine, authentication, persistent Convex
-data, Dashboard, basic Budget, basic Planner, vendor records, and couple sharing
-are implemented. Pure money, date, and budget logic has automated coverage, and
+data, Dashboard, basic Budget, basic Planner, vendor records, couple sharing,
+and a deliberately narrow guest headcount are implemented. Pure money, date,
+budget, and guest validation logic has automated coverage, and
 the production Next.js build passes.
 
 The non-Eve UI is not yet a complete V1: budget items, tasks, and vendors do not

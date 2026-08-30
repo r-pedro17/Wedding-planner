@@ -15,6 +15,7 @@ const nav = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/budget", label: "Budget" },
   { href: "/planner", label: "Planner" },
+  { href: "/guests", label: "Guests" },
   { href: "/settings", label: "Settings" },
 ];
 

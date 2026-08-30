@@ -10,6 +10,7 @@ WEDDING APP
 ├── Dashboard
 ├── Budget
 ├── Planner
+├── Guests
 └── Eve
      │
      └── reads and changes the same Convex data as the UI
@@ -133,7 +134,15 @@ Do not build a marketplace or vendor discovery system in V1.
 
 ---
 
-## 6. Eve
+## 6. Guests
+
+The guest list answers one deliberately narrow question: how many people are we planning for?
+
+Each invitation-party record stores a person or household name, a positive whole-number party size, and optional notes. The screen shows the total planned headcount and supports add, edit, and confirmed removal. RSVP tracking, contact management, invitation sending or delivery, meal choices, and seating remain out of scope.
+
+---
+
+## 7. Eve
 
 Eve is the operator layer over the app.
 
@@ -203,7 +212,7 @@ Simple low-risk additions and corrections can be direct if the interaction remai
 
 ---
 
-## 7. Data ownership
+## 8. Data ownership
 
 Convex is the source of truth.
 
@@ -217,6 +226,7 @@ budgetCategories
 budgetItems
 tasks
 vendors
+guests
 activityLog
 ```
 
@@ -229,6 +239,7 @@ wedding
 │    └── budgetItems
 ├── tasks
 ├── vendors
+├── guests
 └── activityLog
 ```
 
@@ -236,7 +247,7 @@ Every wedding-owned record should include `weddingId`.
 
 ---
 
-## 8. Authentication and sharing
+## 9. Authentication and sharing
 
 Use Clerk for authentication.
 
@@ -253,7 +264,7 @@ Both can manage normal wedding data in V1.
 
 ---
 
-## 9. Suggested repository shape
+## 10. Suggested repository shape
 
 ```text
 wedding/
@@ -261,12 +272,14 @@ wedding/
 │   ├── dashboard/
 │   ├── budget/
 │   ├── planner/
+│   ├── guests/
 │   └── settings/
 │
 ├── components/
 │   ├── ui/
 │   ├── budget/
 │   ├── planner/
+│   ├── guests/
 │   └── eve/
 │
 ├── convex/
@@ -275,6 +288,7 @@ wedding/
 │   ├── budgets.ts
 │   ├── tasks.ts
 │   ├── vendors.ts
+│   ├── guests.ts
 │   └── activity.ts
 │
 ├── agent/
@@ -301,7 +315,7 @@ The exact folders may change to match the frameworks, but preserve the separatio
 
 ---
 
-## 10. UX rules
+## 11. UX rules
 
 1. Mobile-friendly from the beginning.
 2. Large obvious controls.
@@ -316,7 +330,7 @@ The exact folders may change to match the frameworks, but preserve the separatio
 
 ---
 
-## 11. Quality rules
+## 12. Quality rules
 
 Every important feature must have a simple proof that it works.
 
@@ -327,5 +341,6 @@ Examples:
 - Create task through Eve → task appears in Planner.
 - Change budget item through UI → Eve reports the new value.
 - Partner opens wedding → sees same data.
+- Add or edit an invitation → total headcount updates; another wedding cannot read or change it.
 
 Do not accept a feature because the UI renders. Test the complete user path.

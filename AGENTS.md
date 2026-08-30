@@ -4,7 +4,7 @@
 
 Wedding Planner V1 — a calm, non-spreadsheet web app for one couple to run one
 wedding: a dashboard of what needs attention now, a simple budget, a task +
-vendor planner, and **Eve**, an assistant that reads and writes the same data
+vendor planner, a guest headcount, and **Eve**, an assistant that reads and writes the same data
 through explicit tools. Next.js App Router + TypeScript on the front, **Convex**
 as the single source of truth, **Clerk** for auth. Eve runs on the `eve`
 framework in `agent/`. No custom backend server.
@@ -39,9 +39,9 @@ Windows workstation, if Node is not already on `PATH`, use
 
 ## Structure
 
-- `app/` — routes: `dashboard/`, `budget/`, `planner/`, `settings/`; root layout holds the Clerk + Convex providers and the Eve entry point
-- `components/` — `ui/` (small primitives, only the ones actually used), `budget/`, `planner/`, `eve/`
-- `convex/` — `schema.ts` (all V1 tables), `weddings.ts`, `budgets.ts`, `tasks.ts`, `vendors.ts`, `reminders.ts`, `crons.ts`, `lib/` (`auth.ts` membership guards, plus the pure `money.ts`, `dates.ts`, `budget.ts` domain logic shared with the UI), `_generated/` (generated — never edit)
+- `app/` — routes: `dashboard/`, `budget/`, `planner/`, `guests/`, `settings/`; root layout holds the Clerk + Convex providers and the Eve entry point
+- `components/` — `ui/` (small primitives, only the ones actually used), `budget/`, `planner/`, `guests/`, `eve/`
+- `convex/` — `schema.ts` (all V1 tables), `weddings.ts`, `budgets.ts`, `tasks.ts`, `vendors.ts`, `guests.ts`, `reminders.ts`, `crons.ts`, `lib/` (`auth.ts` membership guards, plus pure domain logic shared with the UI), `_generated/` (generated — never edit)
 - `agent/` — Eve: `agent.ts`, `instructions.md`, `tools/` (`budget.ts`, `planner.ts`, `vendors.ts`), `skills/`, `lib/convex.ts` (Convex client), `channels/`. Framework files owned by `eve` — leave scaffold alone
 - `tests/` — Vitest specs for the domain logic in `convex/lib/`
 - `docs/` — durable product + engineering context
@@ -59,7 +59,7 @@ Windows workstation, if Node is not already on `PATH`, use
 - The app must render **without Clerk/Convex env vars** — features degrade, nothing throws.
 - State: Convex React hooks for server state; auth state via Clerk providers.
 - Smallest complete change → focused tests → broader tests → verify the real user flow. No speculative refactors. No abstraction before two real call sites. Obvious code over clever.
-- **V1 scope is Dashboard + Budget + Planner + Eve only.** Not in V1: guest list, RSVP, seating, wedding website, registry, marketplace, payments, email ingestion, native mobile, proactive Eve automation. Don't expand scope; don't add planning docs.
+- **V1 scope is Dashboard + Budget + Planner + Guests + Eve.** Guests means only invitation parties, optional notes, and derived headcount. Not in V1: RSVP, seating, wedding website, registry, marketplace, payments, email ingestion, native mobile, proactive Eve automation. Don't expand scope; don't add planning docs.
 - `.env.local` is never committed; keep `.env.example` current.
 - GitHub CI is the clean-checkout contract: quality, dependency health, and
   changed-code Fallow checks run independently. Keep ordinary CI free of live

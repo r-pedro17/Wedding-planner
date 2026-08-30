@@ -21,7 +21,7 @@ impossible or clearly contradictory.
 7. Do not use an LLM for arithmetic.
 8. Keep the number of concepts small.
 9. Do not add infrastructure without a demonstrated need.
-10. Do not expand V1 scope.
+10. Keep guest planning to invitations and headcount; do not drift into RSVP or seating workflows.
 
 ---
 
@@ -136,6 +136,8 @@ committed; available budget; over-budget state.
 **Tasks** — create; update; complete; overdue state.
 
 **Vendors** — create; update; link to task; link to budget item.
+
+**Guests** — create; update; confirmed delete; positive whole-number party size; derived headcount; cross-wedding access denied.
 
 **Eve** — reads correct wedding; reads correct totals; creates a task; updates a
 budget item; created/updated data appears in the normal UI.

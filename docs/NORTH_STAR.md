@@ -4,12 +4,13 @@
 
 A simple wedding planning app that replaces Excel and scattered notes.
 
-The app has four things:
+The app has five things:
 
 1. A dashboard that shows what matters now.
 2. A simple wedding budget.
 3. A planner for tasks, deadlines, and vendors.
-4. Eve sitting on top so the user can manage the wedding by talking to the app.
+4. A guest list that keeps the planned headcount visible.
+5. Eve sitting on top so the user can manage the wedding by talking to the app.
 
 ## North Star
 
@@ -37,6 +38,7 @@ V1 includes:
 - Tasks and deadlines.
 - Task owner and status.
 - Vendors.
+- A simple invitation list with household/guest name, party size, notes, and total headcount.
 - Eve chat.
 - Eve can read the wedding state.
 - Eve can add and update tasks.
@@ -48,7 +50,6 @@ V1 includes:
 
 Do not build these unless the scope is deliberately changed:
 
-- Guest management.
 - RSVPs.
 - Seating charts.
 - Wedding website.
@@ -97,6 +98,7 @@ V1 is done when a user can:
 6. Mark money as planned, quoted, committed, or paid.
 7. Add tasks and deadlines.
 8. Add vendors.
-9. Ask Eve about the wedding.
-10. Ask Eve to change wedding data and see the UI update immediately.
-11. Refresh or reopen the app and see the same correct state.
+9. Add, edit, and remove invitations and see the planned headcount.
+10. Ask Eve about the wedding.
+11. Ask Eve to change wedding data and see the UI update immediately.
+12. Refresh or reopen the app and see the same correct state.

@@ -94,6 +94,13 @@ export default defineSchema({
     status: vendorStatus,
   }).index("by_wedding", ["weddingId"]),
 
+  guests: defineTable({
+    weddingId: v.id("weddings"),
+    name: v.string(),
+    partySize: v.number(),
+    notes: v.optional(v.string()),
+  }).index("by_wedding", ["weddingId"]),
+
   reminders: defineTable({
     weddingId: v.id("weddings"),
     kind: v.union(v.literal("payment_due"), v.literal("task_due")),

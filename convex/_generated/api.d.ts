@@ -10,9 +10,11 @@
 
 import type * as budgets from "../budgets.js";
 import type * as crons from "../crons.js";
+import type * as guests from "../guests.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_budget from "../lib/budget.js";
 import type * as lib_dates from "../lib/dates.js";
+import type * as lib_guests from "../lib/guests.js";
 import type * as lib_money from "../lib/money.js";
 import type * as lib_vendors from "../lib/vendors.js";
 import type * as reminders from "../reminders.js";
@@ -29,9 +31,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   budgets: typeof budgets;
   crons: typeof crons;
+  guests: typeof guests;
   "lib/auth": typeof lib_auth;
   "lib/budget": typeof lib_budget;
   "lib/dates": typeof lib_dates;
+  "lib/guests": typeof lib_guests;
   "lib/money": typeof lib_money;
   "lib/vendors": typeof lib_vendors;
   reminders: typeof reminders;

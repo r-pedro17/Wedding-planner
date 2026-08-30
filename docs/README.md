@@ -13,6 +13,6 @@ Durable build context for the Wedding Planner application.
 
 ## Core rule
 
-Build Dashboard + Budget + Planner + Eve as one usable V1.
+Build Dashboard + Budget + Planner + Guests + Eve as one usable V1.
 
 Do not expand the scope until that complete user flow works.
