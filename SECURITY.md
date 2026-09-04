@@ -116,8 +116,7 @@ reach, then redeploy. Rewriting history does not revoke a credential.
 ## Known gaps
 
 The repository has automated pure-domain tests but does not yet have complete
-Convex function authorization tests or end-to-end browser coverage. CSP and the
-security-header policy are not yet enforced. Eve still has placeholder browser
+Convex function authorization tests or end-to-end browser coverage. Eve still has placeholder browser
 authentication and an environment-level Convex token rather than proven
 request-scoped delegation. Durable audit events, privacy-reviewed production
 telemetry with tested monitors, and a proved backup/restore drill are not yet in
