@@ -1,0 +1,540 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+from pathlib import Path
+import argparse, datetime as dt, hashlib, re, shutil, subprocess, sys
+
+for stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(stream, 'reconfigure', None)
+    if reconfigure:
+        reconfigure(encoding='utf-8', errors='replace')
+
+ROOT = Path.cwd().resolve()
+TROOT = ROOT / '.tickets'
+STATES = {
+    'inbox': '00-inbox', 'ready': '10-ready', 'active': '20-active',
+    'review': '30-review', 'done': '40-done', 'cold': '_cold'
+}
+LIFECYCLE = [STATES[k] for k in ['inbox','ready','active','review','done']]
+
+
+def sh(*args, check=True, capture=True):
+    p = subprocess.run(args, cwd=ROOT, text=True,
+                       stdout=subprocess.PIPE if capture else None,
+                       stderr=subprocess.PIPE if capture else None)
+    if check and p.returncode:
+        msg = (p.stderr or p.stdout or '').strip()
+        raise RuntimeError(msg or f'command failed: {args}')
+    return (p.stdout or '').strip(), p.returncode
+
+
+def config():
+    p = TROOT / 'PROJECT.yaml'
+    if not p.exists():
+        raise RuntimeError('missing .tickets/PROJECT.yaml; run install.py --upgrade first')
+    d = {}
+    for line in p.read_text(encoding='utf-8').splitlines():
+        if ':' in line and not line.lstrip().startswith('#'):
+            k, v = line.split(':', 1)
+            d[k.strip()] = v.strip()
+    return d
+
+
+def now_iso():
+    return dt.datetime.now(dt.timezone.utc).astimezone().isoformat(timespec='seconds')
+
+
+def run_ref(raw: str, prefix='S'):
+    if re.fullmatch(r'[SR][0-9A-F]{16}', raw):
+        return raw
+    return prefix + hashlib.sha256(raw.encode()).hexdigest()[:16].upper()
+
+
+def actor_slug(s):
+    s = re.sub(r'[^A-Za-z0-9._-]+', '-', s).strip('-').lower()
+    return s or 'agent'
+
+
+def all_tickets():
+    out = []
+    for d in LIFECYCLE + ['_cold']:
+        p = TROOT / d
+        if p.exists():
+            out += [x for x in p.rglob('*.md') if x.name != '.gitkeep']
+    return out
+
+
+def frontmatter(path: Path):
+    text = path.read_text(encoding='utf-8')
+    if not text.startswith('---\n'):
+        return {}, text
+    end = text.find('\n---\n', 4)
+    if end < 0:
+        return {}, text
+    meta = {}
+    for line in text[4:end].splitlines():
+        if ':' in line:
+            k, v = line.split(':', 1)
+            meta[k.strip()] = v.strip()
+    return meta, text
+
+
+def set_meta(path: Path, updates: dict[str, str]):
+    text = path.read_text(encoding='utf-8')
+    end = text.find('\n---\n', 4)
+    if not text.startswith('---\n') or end < 0:
+        raise RuntimeError(f'bad frontmatter: {path}')
+    lines = text[4:end].splitlines()
+    seen, out = set(), []
+    for line in lines:
+        if ':' in line:
+            k = line.split(':', 1)[0].strip()
+            if k in updates:
+                out.append(f'{k}: {updates[k]}')
+                seen.add(k)
+                continue
+        out.append(line)
+    for k, v in updates.items():
+        if k not in seen:
+            out.append(f'{k}: {v}')
+    path.write_text('---\n' + '\n'.join(out) + text[end:], encoding='utf-8')
+
+
+def parse_list(raw: str):
+    raw = (raw or '').strip()
+    if not raw or raw == '[]':
+        return []
+    if not (raw.startswith('[') and raw.endswith(']')):
+        return []
+    return [x.strip().strip("'\"") for x in raw[1:-1].split(',') if x.strip()]
+
+
+def lock_info(required=True):
+    p = TROOT / 'LOCK.md'
+    if not p.exists():
+        if required:
+            raise RuntimeError('missing .tickets/LOCK.md; run install.py --upgrade and complete the Lock')
+        return {'status': 'missing', 'version': ''}
+    m, _ = frontmatter(p)
+    return {'status': m.get('status', 'unknown').strip(), 'version': m.get('version', '').strip()}
+
+
+def require_locked():
+    info = lock_info(True)
+    if info['status'] != 'locked':
+        raise RuntimeError(f"LOCK.md status is {info['status']!r}; lock the direction before advancing work")
+    if not info['version']:
+        raise RuntimeError('LOCK.md is missing a version')
+    return info['version']
+
+
+def require_current_lock(meta, ticket=''):
+    current = require_locked()
+    pinned = meta.get('lock_version', '').strip()
+    remedy = f'; run `ticket relock {ticket}` after rechecking it against the current LOCK' if ticket else ''
+    if not pinned:
+        raise RuntimeError('ticket has no lock version' + remedy)
+    if pinned != current:
+        raise RuntimeError(f'ticket uses LOCK v{pinned}, current is v{current}' + remedy)
+
+
+def blocked(meta):
+    return meta.get('blocked', '').strip().lower() in {'1', 'true', 'yes', 'y'}
+
+
+def require_unblocked(meta):
+    if blocked(meta):
+        why = meta.get('blocked_on', '').strip()
+        raise RuntimeError('ticket is blocked' + (f' on {why}' if why else ''))
+
+
+def find_ticket(q, state=None):
+    candidates = []
+    dirs = [STATES[state]] if state else LIFECYCLE + ['_cold']
+    for d in dirs:
+        root = TROOT / d
+        if not root.exists():
+            continue
+        for p in root.rglob('*.md'):
+            if q in p.name:
+                candidates.append(p)
+                continue
+            m, _ = frontmatter(p)
+            if q in (m.get('id', ''), m.get('short_id', '')):
+                candidates.append(p)
+    uniq, seen = [], set()
+    for p in candidates:
+        if p not in seen:
+            uniq.append(p); seen.add(p)
+    if not uniq:
+        raise RuntimeError(f'no ticket matches {q!r}' + (f' in {state}' if state else ''))
+    if len(uniq) > 1:
+        names = '\n'.join('  ' + str(x.relative_to(ROOT)) for x in uniq[:10])
+        raise RuntimeError(f'ambiguous ticket {q!r}; use canonical id:\n{names}')
+    return uniq[0]
+
+
+def ticket_rel(path: Path):
+    return str(path.relative_to(ROOT)).replace('\\', '/')
+
+
+def commit_paths(message: str, *paths: str):
+    clean = [p for p in paths if p]
+    if not clean:
+        raise RuntimeError('no ticket paths supplied for commit')
+    sh('git', 'commit', '-m', message, '--', *clean)
+
+
+def require_main_clean(shared=False):
+    c = config()
+    branch, _ = sh('git', 'branch', '--show-current')
+    canonical = c.get('canonical_branch', 'main')
+    if branch != canonical:
+        raise RuntimeError(f'state mutation requires canonical branch {canonical}; current={branch}; switch to {canonical}, run the ticket command, then return to your work branch')
+    status, _ = sh('git', 'status', '--porcelain', '--', '.tickets')
+    if status:
+        raise RuntimeError('.tickets must be clean for ticket state mutation; unrelated working files may remain dirty')
+    if not shared:
+        return c
+    sh('git', 'fetch', 'origin', canonical)
+    local, _ = sh('git', 'rev-parse', 'HEAD')
+    remote, _ = sh('git', 'rev-parse', f'origin/{canonical}')
+    if local != remote:
+        _, rc = sh('git', 'merge-base', '--is-ancestor', local, remote, check=False)
+        if rc == 0:
+            merge_out, ff_rc = sh('git', 'merge', '--ff-only', f'origin/{canonical}', check=False)
+            if ff_rc:
+                raise RuntimeError('canonical branch can fast-forward but safe synchronization failed: ' + (merge_out or 'git merge failed'))
+        else:
+            raise RuntimeError('canonical branch diverged from origin; refusing automatic reconciliation')
+    return c
+
+
+def require_no_unrelated_staged():
+    out, _ = sh('git', 'diff', '--cached', '--name-only')
+    unrelated = [p for p in out.splitlines() if p and not (p == '.tickets' or p.startswith('.tickets/'))]
+    if unrelated:
+        raise RuntimeError('reviewer merge requires unrelated staged files to be unstaged first; working-tree edits may remain')
+
+
+def claim_ref(ticket_id):
+    return f"refs/tags/{config().get('claim_namespace', '_ticket-claims')}/{ticket_id}"
+
+
+def is_shared(meta):
+    return meta.get('claim_mode', 'local') == 'shared'
+
+
+def mutation_ticket(a, state):
+    explicit_shared = getattr(a, 'shared', False)
+    c = require_main_clean(explicit_shared)
+    p = find_ticket(a.ticket, state)
+    m, _ = frontmatter(p)
+    shared = is_shared(m)
+    if explicit_shared and not shared:
+        raise RuntimeError('ticket uses local coordination; omit --shared')
+    if shared and not explicit_shared:
+        c = require_main_clean(True)
+        p = find_ticket(a.ticket, state)
+        m, _ = frontmatter(p)
+    return c, p, m, shared
+
+
+def cmd_new(a):
+    c = require_main_clean(False); agent = actor_slug(a.agent); rr = run_ref(a.session)
+    date = a.date or dt.datetime.now().strftime('%Y%m%d')
+    nums = []
+    for p in all_tickets():
+        m = re.match(rf'T-{date}-(\d{{4}})-S[0-9A-F]{{16}}__O-', p.name)
+        if m:
+            nums.append(int(m.group(1)))
+    n = max(nums, default=0) + 1
+    if n > 9999:
+        raise RuntimeError('daily short-id capacity exhausted; do not wrap or reuse')
+    short = f'T-{date}-{n:04d}'; cid = f'{short}-{rr}'
+    p = TROOT / STATES['inbox'] / f'{cid}__O-{agent}.md'
+    template = (TROOT / 'ISSUE_TEMPLATE.md').read_text(encoding='utf-8')
+    for k, v in {
+        'PROJECT_ID': c['project_id'], 'CANONICAL_ID': cid, 'SHORT_ID': short,
+        'TIMESTAMP': now_iso(), 'AGENT': agent, 'RUN_REF': rr, 'TITLE': a.title,
+    }.items():
+        template = template.replace(k, v)
+    p.write_text(template, encoding='utf-8')
+    rel = ticket_rel(p)
+    sh('git', 'add', rel)
+    commit_paths(f'ticket: {short} {a.title}', rel)
+    print(cid)
+
+
+def cmd_ready(a):
+    c = require_main_clean(a.shared); p = find_ticket(a.ticket, 'inbox'); m, _ = frontmatter(p)
+    require_unblocked(m)
+    set_meta(p, {'lock_version': require_locked(), 'claim_mode': 'shared' if a.shared else 'local'})
+    src = ticket_rel(p); dest = TROOT / STATES['ready'] / p.name; dst = ticket_rel(dest)
+    sh('git', 'mv', src, dst)
+    commit_paths(f'ready: {frontmatter(dest)[0].get("short_id", a.ticket)}', src, dst)
+    if a.shared:
+        sh('git', 'push', 'origin', c['canonical_branch'])
+    print(frontmatter(dest)[0]['id'])
+
+
+def cmd_relock(a):
+    require_main_clean(False)
+    p = find_ticket(a.ticket)
+    if p.parent.name not in {STATES['inbox'], STATES['ready'], STATES['active'], STATES['review']}:
+        raise RuntimeError('relock is only for live tickets')
+    m, _ = frontmatter(p)
+    updates = {'lock_version': require_locked(), 'schema': '3', 'claim_mode': m.get('claim_mode') or 'local'}
+    if p.parent.name in {STATES['active'], STATES['review']}:
+        agent = actor_slug(a.agent or m.get('claim_agent') or 'legacy-implementer')
+        run = m.get('claim_run') or run_ref(a.session or f'legacy:{m.get("id", p.name)}')
+        branch = m.get('work_branch') or f'work/{m.get("short_id", m.get("id", "legacy"))}-{run}'
+        updates.update({'claim_agent': agent, 'claim_run': run, 'work_branch': branch})
+    set_meta(p, updates)
+    rel = ticket_rel(p); sh('git', 'add', rel)
+    commit_paths(f'relock: {m.get("short_id", m.get("id", a.ticket))} to LOCK v{updates["lock_version"]}', rel)
+    print(m.get('id', a.ticket))
+
+
+def cmd_claim(a):
+    c = require_main_clean(a.shared); p = find_ticket(a.ticket, 'ready'); m, _ = frontmatter(p)
+    require_unblocked(m); require_current_lock(m, a.ticket)
+    cid = m['id']; rr = run_ref(a.session); agent = actor_slug(a.agent)
+    attempt = int(m.get('claim_attempt', '0') or 0) + 1
+    work_branch = f'work/{m.get("short_id", cid)}-{rr}'
+    mode = 'shared' if a.shared else 'local'; ref = claim_ref(cid)
+    if a.shared:
+        _, rc = sh('git', 'ls-remote', '--exit-code', '--tags', 'origin', ref, check=False)
+        if rc == 0:
+            raise RuntimeError('ticket already has a remote claim')
+    set_meta(p, {'claim_attempt': str(attempt), 'claim_agent': agent, 'claim_run': rr,
+                 'claimed_at': now_iso(), 'work_branch': work_branch, 'claim_mode': mode})
+    src = ticket_rel(p); dest = TROOT / STATES['active'] / p.name; dst = ticket_rel(dest)
+    sh('git', 'mv', src, dst)
+    commit_paths(f'claim: {m.get("short_id", cid)} by {agent}/{rr} [{mode}]', src, dst)
+    if a.shared:
+        tag = ref.removeprefix('refs/tags/')
+        sh('git', 'tag', '-a', tag, '-m', f'ticket={cid}\nagent={agent}\nrun={rr}\nattempt={attempt}')
+        _, rc = sh('git', 'push', '--atomic', 'origin', c['canonical_branch'], ref, check=False)
+        if rc:
+            sh('git', 'tag', '-d', tag, check=False)
+            raise RuntimeError('claim push rejected; local claim commit retained for inspection/reconciliation')
+    print(f'{cid} {agent}/{rr} {work_branch} {mode}')
+
+
+def cmd_release(a):
+    c, p, m, shared = mutation_ticket(a, 'active')
+    cid = m['id']; rr = run_ref(a.session); agent = actor_slug(a.agent)
+    if m.get('claim_agent') != agent or m.get('claim_run') != rr:
+        raise RuntimeError('release identity does not match current claim')
+    ref = claim_ref(cid); tag = ref.removeprefix('refs/tags/')
+    set_meta(p, {'claim_agent': '', 'claim_run': '', 'claimed_at': '', 'work_branch': '', 'claim_mode': ''})
+    src = ticket_rel(p); dest = TROOT / STATES['ready'] / p.name; dst = ticket_rel(dest)
+    sh('git', 'mv', src, dst)
+    commit_paths(f'release: {m.get("short_id", cid)}', src, dst)
+    if shared:
+        _, rc = sh('git', 'push', '--atomic', 'origin', c['canonical_branch'], f':{ref}', check=False)
+        if rc:
+            raise RuntimeError('release push rejected; local commit retained for inspection/retry')
+        sh('git', 'tag', '-d', tag, check=False)
+    print(cid)
+
+
+def cmd_review(a):
+    c, p, m, shared = mutation_ticket(a, 'active')
+    require_unblocked(m); require_current_lock(m, a.ticket); cid = m['id']
+    work_branch = m.get('work_branch', '')
+    if not work_branch:
+        raise RuntimeError('active ticket missing work_branch')
+    if shared:
+        remote_tip, rc = sh('git', 'ls-remote', '--heads', 'origin', f'refs/heads/{work_branch}', check=False)
+        if rc or not remote_tip:
+            raise RuntimeError('implementation branch is not published to origin')
+        expected_sha = remote_tip.split()[0]; source = 'published work-branch tip'
+    else:
+        expected_sha, rc = sh('git', 'rev-parse', '--verify', f'refs/heads/{work_branch}', check=False)
+        if rc or not expected_sha:
+            raise RuntimeError('implementation branch does not exist locally')
+        source = 'local work-branch tip'
+    if expected_sha != a.implementation:
+        raise RuntimeError(f'implementation must equal {source} {expected_sha}')
+    set_meta(p, {'implementation_sha': a.implementation, 'review_result': 'PENDING'})
+    src = ticket_rel(p); dest = TROOT / STATES['review'] / p.name; dst = ticket_rel(dest)
+    sh('git', 'mv', src, dst)
+    commit_paths(f'review: {m.get("short_id", cid)}', src, dst)
+    if shared:
+        sh('git', 'push', 'origin', c['canonical_branch'])
+    print(cid)
+
+
+def cmd_reject(a):
+    c, p, m, shared = mutation_ticket(a, 'review')
+    require_current_lock(m, a.ticket); cid = m['id']; rr = run_ref(a.session); agent = actor_slug(a.reviewer)
+    if rr == m.get('claim_run') or agent == m.get('claim_agent'):
+        raise RuntimeError('independent review requires a different reviewer agent and run')
+    set_meta(p, {'review_agent': agent, 'review_run': rr, 'reviewed_at': now_iso(),
+                 'review_result': 'REJECTED', 'implementation_sha': ''})
+    src = ticket_rel(p); dest = TROOT / STATES['active'] / p.name; dst = ticket_rel(dest)
+    sh('git', 'mv', src, dst)
+    commit_paths(f'reject: {m.get("short_id", cid)} by {agent}/{rr}', src, dst)
+    if shared:
+        sh('git', 'push', 'origin', c['canonical_branch'])
+    print(cid)
+
+
+def store_proof(ticket_id: str, raw: str):
+    src = (ROOT / raw).resolve()
+    try:
+        src.relative_to(ROOT)
+    except ValueError:
+        raise RuntimeError('proof must be a repository-local file')
+    if not src.exists() or not src.is_file():
+        raise RuntimeError(f'proof file missing or not a file: {raw}')
+    dest_dir = TROOT / '_proofs' / ticket_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+    shutil.copy2(src, dest)
+    return ticket_rel(dest)
+
+
+def cmd_done(a):
+    c, p, m, shared = mutation_ticket(a, 'review')
+    require_current_lock(m, a.ticket); cid = m['id']; impl = m.get('implementation_sha', '')
+    if not impl:
+        raise RuntimeError('review ticket missing implementation_sha')
+    rr = run_ref(a.session); agent = actor_slug(a.reviewer)
+    if rr == m.get('claim_run') or agent == m.get('claim_agent'):
+        raise RuntimeError('independent review requires a different reviewer agent and run')
+    if not a.proof:
+        raise RuntimeError('managed Done requires --proof <repository-local file>')
+
+    work_branch = m.get('work_branch', '')
+    if shared and work_branch:
+        sh('git', 'fetch', 'origin', work_branch)
+    _, rc = sh('git', 'merge-base', '--is-ancestor', impl, 'HEAD', check=False)
+    if rc:
+        require_no_unrelated_staged()
+        merge_out, merge_rc = sh('git', 'merge', '--no-ff', impl, '-m',
+                                  f'merge: {m.get("short_id", cid)} reviewed by {agent}/{rr}', check=False)
+        if merge_rc:
+            sh('git', 'merge', '--abort', check=False)
+            detail = merge_out or 'git merge failed without output'
+            raise RuntimeError(f'reviewer merge failed: {detail}; resolve or reject instead of closing the ticket')
+
+    proof_ref = store_proof(cid, a.proof)
+    set_meta(p, {'review_agent': agent, 'review_run': rr, 'reviewed_at': now_iso(),
+                 'review_result': 'APPROVED', 'evidence_refs': f'[{proof_ref}]'})
+    src = ticket_rel(p); dest = TROOT / STATES['done'] / p.name; dst = ticket_rel(dest)
+    sh('git', 'mv', src, dst); sh('git', 'add', proof_ref)
+    commit_paths(f'done: {m.get("short_id", cid)} reviewed by {agent}/{rr}', src, dst, proof_ref)
+    if shared:
+        ref = claim_ref(cid); tag = ref.removeprefix('refs/tags/')
+        _, rc = sh('git', 'push', '--atomic', 'origin', c['canonical_branch'], f':{ref}', check=False)
+        if rc:
+            raise RuntimeError('done push rejected; local merge and Done commit retained for inspection/retry')
+        sh('git', 'tag', '-d', tag, check=False)
+    print(cid)
+
+
+def cmd_find(a):
+    dirs = [STATES[a.state]] if a.state else LIFECYCLE
+    rows = []
+    for d in dirs:
+        root = TROOT / d
+        if not root.exists():
+            continue
+        for p in sorted(root.glob('*.md')):
+            m, _ = frontmatter(p)
+            if a.mine and m.get('claim_run') != run_ref(a.mine):
+                continue
+            rows.append((d, m.get('id', '?'), p.name))
+            if len(rows) >= a.limit:
+                break
+        if len(rows) >= a.limit:
+            break
+    for d, cid, name in rows:
+        print(f'{d}\t{cid}\t{name}')
+
+
+def cmd_validate(a):
+    errs, ids = [], {}
+    info = lock_info(False); current_lock = info['version']
+    for p in all_tickets():
+        m, _ = frontmatter(p); cid = m.get('id')
+        if not cid:
+            errs.append(f'missing id: {p}'); continue
+        if cid in ids:
+            errs.append(f'duplicate canonical id: {cid}: {ids[cid]} and {p}')
+        ids[cid] = p
+        managed = bool(m.get('lock_version', '').strip())
+        state = p.parent.name
+        if managed and state in (STATES['ready'], STATES['active'], STATES['review']):
+            if not current_lock:
+                errs.append(f'managed live ticket cannot verify lock because LOCK.md is missing: {cid}')
+            elif m.get('lock_version') != current_lock:
+                errs.append(f'stale lock version on {cid}: ticket={m.get("lock_version")} current={current_lock}')
+        if managed and state == STATES['active']:
+            if not m.get('claim_agent') or not m.get('claim_run') or not m.get('work_branch'):
+                errs.append(f'active managed ticket missing claim metadata: {cid}')
+        if managed and state == STATES['review'] and not m.get('implementation_sha'):
+            errs.append(f'review managed ticket missing implementation_sha: {cid}')
+        if managed and state == STATES['done']:
+            if m.get('review_result') != 'APPROVED':
+                errs.append(f'done managed ticket missing approved review: {cid}')
+            if not m.get('review_run') or not m.get('review_agent'):
+                errs.append(f'done managed ticket missing reviewer provenance: {cid}')
+            if m.get('review_run') == m.get('claim_run'):
+                errs.append(f'done managed ticket review reused implementation run: {cid}')
+            if m.get('review_agent') == m.get('claim_agent'):
+                errs.append(f'done managed ticket review reused implementation agent: {cid}')
+            if not parse_list(m.get('evidence_refs', '[]')):
+                errs.append(f'done managed ticket missing evidence_refs: {cid}')
+    graph = {}
+    for cid, p in ids.items():
+        m, _ = frontmatter(p); deps = parse_list(m.get('depends_on', '[]')); graph[cid] = deps
+        for dep in deps:
+            if dep not in ids:
+                errs.append(f'missing dependency {dep} referenced by {cid}')
+    temp, done = set(), set()
+    def dfs(n, path):
+        if n in temp:
+            errs.append('dependency cycle: ' + ' -> '.join(path + [n])); return
+        if n in done or n not in graph:
+            return
+        temp.add(n)
+        for x in graph[n]:
+            dfs(x, path + [n])
+        temp.remove(n); done.add(n)
+    for n in graph:
+        dfs(n, [])
+    if errs:
+        for e in errs:
+            print('ERROR', e)
+        raise SystemExit(1)
+    print(f'OK {len(ids)} tickets validated')
+
+
+def add_shared_flag(parser, help_text='synchronize shared/parallel ticket state through origin'):
+    parser.add_argument('--shared', action='store_true', help=help_text)
+
+
+def main():
+    p = argparse.ArgumentParser(prog='ticket'); sp = p.add_subparsers(dest='cmd', required=True)
+    q = sp.add_parser('new'); q.add_argument('title'); q.add_argument('--agent', required=True); q.add_argument('--session', required=True); q.add_argument('--date'); q.set_defaults(fn=cmd_new)
+    q = sp.add_parser('ready'); q.add_argument('ticket'); add_shared_flag(q, 'publish Ready state for shared/parallel coordination'); q.set_defaults(fn=cmd_ready)
+    q = sp.add_parser('relock'); q.add_argument('ticket'); q.add_argument('--agent'); q.add_argument('--session'); q.set_defaults(fn=cmd_relock)
+    q = sp.add_parser('claim'); q.add_argument('ticket'); q.add_argument('--agent', required=True); q.add_argument('--session', required=True); add_shared_flag(q, 'use atomic remote claim coordination'); q.set_defaults(fn=cmd_claim)
+    q = sp.add_parser('release'); q.add_argument('ticket'); q.add_argument('--agent', required=True); q.add_argument('--session', required=True); add_shared_flag(q); q.set_defaults(fn=cmd_release)
+    q = sp.add_parser('review'); q.add_argument('ticket'); q.add_argument('--implementation', required=True); add_shared_flag(q); q.set_defaults(fn=cmd_review)
+    q = sp.add_parser('reject'); q.add_argument('ticket'); q.add_argument('--reviewer', required=True); q.add_argument('--session', required=True); add_shared_flag(q); q.set_defaults(fn=cmd_reject)
+    q = sp.add_parser('done'); q.add_argument('ticket'); q.add_argument('--reviewer', required=True); q.add_argument('--session', required=True); q.add_argument('--proof'); add_shared_flag(q); q.set_defaults(fn=cmd_done)
+    q = sp.add_parser('find'); q.add_argument('--state', choices=list(STATES)); q.add_argument('--limit', type=int, default=10); q.add_argument('--mine'); q.set_defaults(fn=cmd_find)
+    q = sp.add_parser('validate'); q.set_defaults(fn=cmd_validate)
+    a = p.parse_args()
+    try:
+        a.fn(a)
+    except RuntimeError as e:
+        print(f'ERROR: {e}', file=sys.stderr); raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,5 +1,7 @@
 # Wedding Planner
 
+> **Ticket harness:** before editing files, run `.tickets/bin/context overview` and make sure a claimed ticket covers the work (`ticket new -> ready -> claim`); for trivial or non-Lock changes, say plainly that no ticket applies. Substantive work finishes at Done (`review -> done`), not as an afterthought. Rules: `.tickets/CONTRACT.md`; pulse: `.tickets/PROJECT.md`, `.tickets/LOCK.md`.
+
 ## Project
 
 Wedding Planner V1 — a calm, non-spreadsheet web app for one couple to run one

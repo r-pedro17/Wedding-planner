@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+from pathlib import Path
+import argparse, json, re, sys
+
+for stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(stream, 'reconfigure', None)
+    if reconfigure:
+        reconfigure(encoding='utf-8', errors='replace')
+
+ROOT = Path.cwd().resolve()
+TROOT = ROOT / '.tickets'
+PROJECT = TROOT / 'PROJECT.md'
+LOCK = TROOT / 'LOCK.md'
+STATES = {'inbox':'00-inbox','ready':'10-ready','active':'20-active','review':'30-review','done':'40-done','cold':'_cold'}
+ACTIVE_STATES = ['active','review','ready','inbox']
+REQUIRED_PROJECT_SECTIONS = ['Current outcome','Bottleneck','Next move']
+REQUIRED_LOCK_SECTIONS = ['North star','Chosen direction','Why','Boundaries / Not now','Reopen only if','Done when']
+MAX_PROJECT_BYTES = 12_000
+MAX_LOCK_BYTES = 12_000
+MAX_TICKET_BYTES = 32_000
+DEFAULT_TOTAL_BYTES = 64_000
+SENSITIVE_SEGMENTS = {'.git','.ssh'}
+SENSITIVE_NAMES = {'.env','credentials.json','service-account.json','id_rsa','id_ed25519'}
+SENSITIVE_SUFFIXES = {'.pem','.key','.p12','.pfx'}
+SAFE_ENV_NAMES = {'.env.example','.env.sample','.env.template'}
+
+
+def die(msg): raise RuntimeError(msg)
+
+def read_text(path: Path, max_bytes=None):
+    if not path.exists(): die(f'missing {path.relative_to(ROOT)}')
+    size = path.stat().st_size
+    if max_bytes is not None and size > max_bytes:
+        die(f'file exceeds context budget ({size}>{max_bytes} bytes): {path.relative_to(ROOT)}')
+    return path.read_text(encoding='utf-8')
+
+def frontmatter_text(text):
+    if not text.startswith('---\n'): return {}, text
+    end=text.find('\n---\n',4)
+    if end < 0: return {}, text
+    meta={}
+    for line in text[4:end].splitlines():
+        if ':' in line:
+            k,v=line.split(':',1); meta[k.strip()]=v.strip()
+    return meta,text[end+5:]
+
+def frontmatter(path): return frontmatter_text(read_text(path))
+
+def parse_list(raw):
+    raw=(raw or '').strip()
+    if not raw or raw=='[]': return []
+    if not(raw.startswith('[') and raw.endswith(']')): die(f'list value must use [a, b] syntax, got: {raw}')
+    return [x.strip().strip("'\"") for x in raw[1:-1].split(',') if x.strip()]
+
+def markdown_sections(body):
+    out={}; current=None
+    for line in body.splitlines():
+        if line.startswith('## '):
+            current=line[3:].strip(); out.setdefault(current,[])
+        elif current is not None: out[current].append(line)
+    return {k:'\n'.join(v).strip() for k,v in out.items()}
+
+def first_line(value):
+    for line in value.splitlines():
+        line=line.strip()
+        if line: return line
+    return ''
+
+def usable(value):
+    value=first_line(value)
+    return '' if value.upper() in {'UNSET','TBD','NONE'} else value
+
+def sensitive_path(path: Path):
+    try: rel=path.relative_to(ROOT)
+    except ValueError: return True
+    parts=[x.lower() for x in rel.parts]; name=rel.name.lower()
+    return (any(x in SENSITIVE_SEGMENTS for x in parts) or
+            name in SENSITIVE_NAMES or
+            (name.startswith('.env.') and name not in SAFE_ENV_NAMES) or
+            rel.suffix.lower() in SENSITIVE_SUFFIXES)
+
+def safe_ref(raw):
+    if not raw or '\x00' in raw: die('empty or invalid context ref')
+    candidate=Path(raw)
+    if candidate.is_absolute(): die(f'absolute context ref forbidden: {raw}')
+    if any(part=='..' for part in candidate.parts): die(f'parent traversal forbidden in context ref: {raw}')
+    path=(ROOT/candidate).resolve()
+    try: path.relative_to(ROOT)
+    except ValueError: die(f'context ref escapes repository: {raw}')
+    if sensitive_path((ROOT/candidate)) or sensitive_path(path): die(f'sensitive context ref forbidden: {raw}')
+    if not path.exists(): die(f'context ref missing: {raw}')
+    if not path.is_file(): die(f'context ref must be a file: {raw}')
+    return path
+
+def ticket_files(state):
+    d=TROOT/STATES[state]
+    if not d.exists(): return []
+    return sorted(p for p in d.glob('*.md') if p.name != '.gitkeep')
+
+def ticket_record(path,state):
+    meta,body=frontmatter(path); title=''
+    for line in body.splitlines():
+        if line.startswith('# '): title=line[2:].strip(); break
+    return {'state':state,'id':meta.get('id',path.stem),'short_id':meta.get('short_id',''),
+            'priority':meta.get('priority','normal'),'initiative':meta.get('initiative',''),'title':title}
+
+def find_ticket(query):
+    hits=[]
+    for state in [*ACTIVE_STATES,'done','cold']:
+        for p in ticket_files(state):
+            meta,_=frontmatter(p)
+            if query in (meta.get('id'),meta.get('short_id'),p.name) or query in p.name: hits.append((p,state))
+    unique=[]; seen=set()
+    for hit in hits:
+        if hit[0] not in seen: unique.append(hit); seen.add(hit[0])
+    if not unique: die(f'no ticket matches {query!r}')
+    if len(unique)>1: die(f'ambiguous ticket {query!r}; use canonical id')
+    return unique[0]
+
+def config_map():
+    out={}; yaml=TROOT/'PROJECT.yaml'
+    if yaml.exists():
+        for line in yaml.read_text(encoding='utf-8').splitlines():
+            if ':' in line and not line.lstrip().startswith('#'):
+                k,v=line.split(':',1); out[k.strip()]=v.strip()
+    else:
+        legacy=TROOT/'PROJECT.json'
+        if legacy.exists():
+            try:
+                obj=json.loads(legacy.read_text(encoding='utf-8')); out['name']=str(obj.get('name','')); out['repo']=str(obj.get('repo',''))
+            except Exception: pass
+    return out
+
+def project_name(): return config_map().get('name') or ROOT.name
+def project_repo(): return config_map().get('repo','')
+
+def project_record():
+    if not PROJECT.exists(): die('.tickets/PROJECT.md is missing; project has no strategic pulse')
+    pmeta,pbody=frontmatter_text(read_text(PROJECT,MAX_PROJECT_BYTES)); psections=markdown_sections(pbody)
+    lmeta={'status':'missing','version':''}; lsections={}
+    if LOCK.exists():
+        lmeta,lbody=frontmatter_text(read_text(LOCK,MAX_LOCK_BYTES)); lsections=markdown_sections(lbody)
+    counts={state:len(ticket_files(state)) for state in STATES}
+    attention=[]
+    for state in ['active','review','ready']:
+        for p in ticket_files(state)[:5]: attention.append(ticket_record(p,state))
+    return {
+        'name':project_name(),'repo':project_repo(),'status':pmeta.get('status','unknown'),'priority':pmeta.get('priority','normal'),
+        'updated_at':pmeta.get('updated_at',''),'north_star':usable(lsections.get('North star','')),
+        'current_outcome':first_line(psections.get('Current outcome','')),'bottleneck':first_line(psections.get('Bottleneck','')),
+        'next_move':first_line(psections.get('Next move','')),'lock_status':lmeta.get('status','unknown'),
+        'lock_version':lmeta.get('version',''),'chosen_direction':usable(lsections.get('Chosen direction','')),
+        'counts':counts,'attention':attention,
+    }
+
+def active_rows(r):
+    return [row for row in r['attention'] if row['state']=='active']
+
+def claim_banner(r):
+    """One loud line about whether work is tied to a claimed ticket.
+
+    Returned so both `overview` and the hook-safe `session` command stay
+    consistent: silence at the start is exactly what let ticketless work slip
+    through and only get flagged at Done."""
+    active=active_rows(r)
+    if active:
+        held=', '.join(row['short_id'] or row['id'] for row in active)
+        return f"Active ticket claimed ({held}) — finish it through review -> done."
+    ready=r['counts'].get('ready',0)
+    hint=f" {ready} ready to claim." if ready else ''
+    return ('NO ACTIVE TICKET — claim before editing files: ticket new -> ready -> claim.'
+            ' Trivial/non-Lock work: say so explicitly.'+hint)
+
+def cmd_overview(a):
+    r=project_record()
+    if a.json: print(json.dumps(r,ensure_ascii=False,sort_keys=True)); return
+    print(f"{r['name']} [{r['status']}/{r['priority']}] lock={r['lock_status']}@{r['lock_version'] or '?'}")
+    print(claim_banner(r))
+    print(f"North star: {r['north_star'] or '-'}")
+    print(f"Direction: {r['chosen_direction'] or '-'}")
+    print(f"Current outcome: {r['current_outcome'] or '-'}")
+    print(f"Bottleneck: {r['bottleneck'] or '-'}")
+    print(f"Next move: {r['next_move'] or '-'}")
+    c=r['counts']; print('Tickets: '+' '.join(f'{k}={c[k]}' for k in ['inbox','ready','active','review','done']))
+    for row in r['attention'][:a.limit]: print(f"{row['state']}\t{row['short_id'] or row['id']}\t{row['title']}")
+
+def cmd_session(a):
+    """Session-start orientation for an editor hook (Claude Code / Codex).
+
+    Never raises and never exits non-zero: a partially set-up or missing harness
+    must not break someone's session. It only surfaces whether the work about to
+    happen is tied to a claimed ticket."""
+    try:
+        r=project_record()
+    except Exception:
+        return
+    print(f"[tickets] {r['name']} lock={r['lock_status']}@{r['lock_version'] or '?'}")
+    print('[tickets] '+claim_banner(r))
+    for row in active_rows(r): print(f"[tickets]   {row['short_id'] or row['id']}  {row['title']}")
+
+def add_chunk(chunks,label,path,budget,max_file=None,mandatory=False):
+    text=read_text(path)
+    size=len(text.encode('utf-8'))
+    if max_file is not None and size > max_file:
+        if mandatory: die(f'file exceeds context budget ({size}>{max_file} bytes): {path.relative_to(ROOT)}')
+        chunks.append((f'{label} [OMITTED]',f'Context omitted: file is {size} bytes, per-file cap is {max_file}. Load this file explicitly if needed.'))
+        return False
+    if size > budget[0]:
+        if mandatory: die(f'mandatory context exceeds total budget at {path.relative_to(ROOT)}')
+        chunks.append((f'{label} [OMITTED]',f'Context omitted: need {size} bytes, remaining {budget[0]}. Load this file explicitly if needed.'))
+        return False
+    budget[0]-=size; chunks.append((label,text)); return True
+
+def cmd_ticket(a):
+    path,state=find_ticket(a.ticket)
+    ptext=read_text(PROJECT,MAX_PROJECT_BYTES); ttext=read_text(path)
+    pmeta,_=frontmatter_text(ptext); tmeta,_=frontmatter_text(ttext)
+    chunks=[]; budget=[a.max_bytes]
+    if a.depth in ('project','ticket','refs'):
+        add_chunk(chunks,'PROJECT PULSE',PROJECT,budget,MAX_PROJECT_BYTES,True)
+        if LOCK.exists(): add_chunk(chunks,'CURRENT LOCK',LOCK,budget,MAX_LOCK_BYTES,True)
+        else: chunks.append(('CURRENT LOCK [MISSING]','No .tickets/LOCK.md yet. Run install.py --upgrade and complete the Lock before advancing managed work.'))
+    if a.depth in ('ticket','refs'):
+        add_chunk(chunks,f'TICKET {state}',path,budget,MAX_TICKET_BYTES,False)
+    if a.depth=='refs':
+        refs=parse_list(pmeta.get('context_refs','[]'))+parse_list(tmeta.get('context_refs','[]')); seen=set()
+        for raw in refs:
+            ref=safe_ref(raw)
+            if ref in seen or ref in {PROJECT.resolve(),LOCK.resolve(),path.resolve()}: continue
+            seen.add(ref); add_chunk(chunks,f'REF {ref.relative_to(ROOT)}',ref,budget,None,False)
+    for label,text in chunks:
+        print(f'===== {label} ====='); print(text.rstrip())
+
+def validate_ref_list(owner,raw,errors):
+    try: refs=parse_list(raw)
+    except RuntimeError as e: errors.append(f'{owner}: {e}'); return
+    for ref in refs:
+        try: safe_ref(ref)
+        except RuntimeError as e: errors.append(f'{owner}: {e}')
+
+def managed_live_ticket_count():
+    total=0
+    for state in ACTIVE_STATES:
+        for p in ticket_files(state):
+            try: meta,_=frontmatter(p)
+            except RuntimeError: continue
+            if meta.get('lock_version','').strip(): total += 1
+    return total
+
+def unmanaged_live_ticket_count():
+    total=0
+    for state in ACTIVE_STATES:
+        for p in ticket_files(state):
+            try: meta,_=frontmatter(p)
+            except RuntimeError: continue
+            if not meta.get('lock_version','').strip(): total += 1
+    return total
+
+def cmd_check(a):
+    errors=[]; warnings=[]
+    if not PROJECT.exists(): errors.append('missing .tickets/PROJECT.md')
+    else:
+        if PROJECT.stat().st_size>MAX_PROJECT_BYTES: errors.append(f'PROJECT.md exceeds {MAX_PROJECT_BYTES} byte strategic-context budget')
+        else:
+            meta,body=frontmatter(PROJECT); sections=markdown_sections(body)
+            for name in REQUIRED_PROJECT_SECTIONS:
+                if name not in sections: errors.append(f'PROJECT.md missing section: {name}')
+            if meta.get('status','active')=='active':
+                if not first_line(sections.get('Bottleneck','')): warnings.append('active project has no bottleneck')
+                if not first_line(sections.get('Next move','')): warnings.append('active project has no next move')
+            validate_ref_list('PROJECT.md context_refs',meta.get('context_refs','[]'),errors)
+    if not LOCK.exists(): errors.append('missing .tickets/LOCK.md')
+    else:
+        if LOCK.stat().st_size>MAX_LOCK_BYTES: errors.append(f'LOCK.md exceeds {MAX_LOCK_BYTES} byte execution-contract budget')
+        else:
+            meta,body=frontmatter(LOCK); sections=markdown_sections(body)
+            try:
+                if int(meta.get('version','0') or 0)<1: errors.append('LOCK.md version must be >= 1')
+            except ValueError: errors.append('LOCK.md version must be an integer')
+            for name in REQUIRED_LOCK_SECTIONS:
+                if name not in sections: errors.append(f'LOCK.md missing section: {name}')
+            if meta.get('status')=='locked':
+                for name in REQUIRED_LOCK_SECTIONS:
+                    if not usable(sections.get(name,'')): errors.append(f'locked LOCK.md has no usable value for: {name}')
+            else:
+                managed=managed_live_ticket_count()
+                if managed: errors.append(f"LOCK.md status is {meta.get('status','unknown')!r} but {managed} managed live tickets exist")
+    unmanaged=unmanaged_live_ticket_count()
+    if unmanaged: warnings.append(f'{unmanaged} live tickets are not yet managed by the current LOCK; adopt deliberately with `ticket relock <id>`')
+    for state in ACTIVE_STATES:
+        for p in ticket_files(state):
+            try: meta,_=frontmatter(p)
+            except Exception as e: errors.append(f'{p.relative_to(ROOT)}: unreadable: {e}'); continue
+            validate_ref_list(str(p.relative_to(ROOT)),meta.get('context_refs','[]'),errors)
+    for w in warnings: print('WARN',w)
+    for e in errors: print('ERROR',e)
+    if errors: raise SystemExit(1)
+    print(f'OK project context checked; warnings={len(warnings)}')
+
+def main():
+    p=argparse.ArgumentParser(prog='context'); sp=p.add_subparsers(dest='cmd',required=True)
+    q=sp.add_parser('overview'); q.add_argument('--json',action='store_true'); q.add_argument('--limit',type=int,default=5); q.set_defaults(fn=cmd_overview)
+    q=sp.add_parser('ticket'); q.add_argument('ticket'); q.add_argument('--depth',choices=['project','ticket','refs'],default='ticket'); q.add_argument('--max-bytes',type=int,default=DEFAULT_TOTAL_BYTES); q.set_defaults(fn=cmd_ticket)
+    q=sp.add_parser('session'); q.set_defaults(fn=cmd_session)
+    q=sp.add_parser('check'); q.set_defaults(fn=cmd_check)
+    a=p.parse_args()
+    try: a.fn(a)
+    except RuntimeError as e: print(f'ERROR: {e}',file=sys.stderr); raise SystemExit(1)
+
+if __name__=='__main__': main()

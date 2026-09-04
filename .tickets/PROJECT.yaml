@@ -1,0 +1,6 @@
+project_id: P-9CB17850
+name: Wedding Planner
+repo: r-pedro17/Wedding-planner
+canonical_branch: main
+timezone: Europe/Amsterdam
+claim_namespace: _ticket-claims
