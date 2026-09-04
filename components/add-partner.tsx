@@ -50,6 +50,11 @@ function AddPartnerControl({ weddingId }: { weddingId: Id<"weddings"> }) {
   );
 }
 
+function roleOf(members: Member[] | undefined, clerkUserId: string | undefined) {
+  if (!members || !clerkUserId) return undefined;
+  return members.find((member) => member.clerkUserId === clerkUserId)?.role;
+}
+
 function OwnerOnlyAddPartner({
   weddingId,
   members,
@@ -58,9 +63,7 @@ function OwnerOnlyAddPartner({
   members: Member[] | undefined;
 }) {
   const { user } = useUser();
-  if (!user || !members) return null;
-  const me = members.find((member) => member.clerkUserId === user.id);
-  if (me?.role !== "owner") return null;
+  if (roleOf(members, user?.id) !== "owner") return null;
   return <AddPartnerControl weddingId={weddingId} />;
 }
 
