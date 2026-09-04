@@ -11,7 +11,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app components convex tests agent proxy.ts next.config.ts vitest.config.ts",
+    "lint": "eslint app components convex lib tests agent proxy.ts next.config.ts vitest.config.ts",
     "lint:ox": "oxlint . --deny-warnings",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
