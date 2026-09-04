@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { budgetItemStatus } from "./schema";
 import { requireMembership } from "./lib/auth";
+import { recordUserEvent } from "./lib/audit";
 import { computeTotals, byCategory, remainingCents, upcomingPayments } from "./lib/budget";
 import { assertDateOnly } from "./lib/dates";
 import { assertNonNegativeCents } from "./lib/money";
@@ -67,8 +68,16 @@ export const addCategory = mutation({
   args: { weddingId: v.id("weddings"), name: v.string() },
   returns: v.id("budgetCategories"),
   handler: async (ctx, { weddingId, name }) => {
-    await requireMembership(ctx, weddingId);
-    return await ctx.db.insert("budgetCategories", { weddingId, name });
+    const { clerkUserId } = await requireMembership(ctx, weddingId);
+    const categoryId = await ctx.db.insert("budgetCategories", { weddingId, name });
+    await recordUserEvent(ctx, {
+      weddingId,
+      actorId: clerkUserId,
+      action: "create",
+      entity: "budgetCategory",
+      entityId: categoryId,
+    });
+    return categoryId;
   },
 });
 
@@ -88,7 +97,7 @@ export const addItem = mutation({
   },
   returns: v.id("budgetItems"),
   handler: async (ctx, args) => {
-    await requireMembership(ctx, args.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, args.weddingId);
     await requireWeddingVendor(ctx, args.vendorId, args.weddingId);
     if (args.dueDate) assertDateOnly(args.dueDate, "dueDate");
     assertNonNegativeCents(args.plannedCents, "plannedCents");
@@ -96,11 +105,19 @@ export const addItem = mutation({
     if (args.committedCents !== undefined) assertNonNegativeCents(args.committedCents, "committedCents");
     const paidCents = assertNonNegativeCents(args.paidCents ?? 0, "paidCents");
 
-    return await ctx.db.insert("budgetItems", {
+    const itemId = await ctx.db.insert("budgetItems", {
       ...args,
       paidCents,
       status: args.status ?? "idea",
     });
+    await recordUserEvent(ctx, {
+      weddingId: args.weddingId,
+      actorId: clerkUserId,
+      action: "create",
+      entity: "budgetItem",
+      entityId: itemId,
+    });
+    return itemId;
   },
 });
 
@@ -122,7 +139,7 @@ export const updateItem = mutation({
   handler: async (ctx, { itemId, ...patch }) => {
     const item = await ctx.db.get(itemId);
     if (!item) throw new Error("Budget item not found");
-    await requireMembership(ctx, item.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, item.weddingId);
     await requireWeddingVendor(ctx, patch.vendorId, item.weddingId);
     if (patch.dueDate) assertDateOnly(patch.dueDate, "dueDate");
     for (const field of ["plannedCents", "quotedCents", "committedCents", "paidCents"] as const) {
@@ -130,6 +147,13 @@ export const updateItem = mutation({
       if (value !== undefined) assertNonNegativeCents(value, field);
     }
     await ctx.db.patch(itemId, patch);
+    await recordUserEvent(ctx, {
+      weddingId: item.weddingId,
+      actorId: clerkUserId,
+      action: "update",
+      entity: "budgetItem",
+      entityId: itemId,
+    });
     return itemId;
   },
 });
@@ -141,13 +165,20 @@ export const recordPayment = mutation({
   handler: async (ctx, { itemId, amountCents }) => {
     const item = await ctx.db.get(itemId);
     if (!item) throw new Error("Budget item not found");
-    await requireMembership(ctx, item.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, item.weddingId);
     assertNonNegativeCents(amountCents, "amountCents");
     const paidCents = item.paidCents + amountCents;
     const owed = item.committedCents ?? item.plannedCents;
     await ctx.db.patch(itemId, {
       paidCents,
       status: paidCents >= owed ? "paid" : item.status === "idea" ? "booked" : item.status,
+    });
+    await recordUserEvent(ctx, {
+      weddingId: item.weddingId,
+      actorId: clerkUserId,
+      action: "payment",
+      entity: "budgetItem",
+      entityId: itemId,
     });
     return { itemId, paidCents };
   },
@@ -159,7 +190,14 @@ export const removeItem = mutation({
   handler: async (ctx, { itemId }) => {
     const item = await ctx.db.get(itemId);
     if (!item) return;
-    await requireMembership(ctx, item.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, item.weddingId);
     await ctx.db.delete(itemId);
+    await recordUserEvent(ctx, {
+      weddingId: item.weddingId,
+      actorId: clerkUserId,
+      action: "delete",
+      entity: "budgetItem",
+      entityId: itemId,
+    });
   },
 });

@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { vendorStatus } from "./schema";
 import { requireMembership } from "./lib/auth";
+import { recordUserEvent } from "./lib/audit";
 import { vendorDoc } from "./lib/validators";
 
 export const list = query({
@@ -30,9 +31,17 @@ export const add = mutation({
   },
   returns: v.id("vendors"),
   handler: async (ctx, args) => {
-    await requireMembership(ctx, args.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, args.weddingId);
     if (args.name.trim() === "") throw new Error("Vendor name is required");
-    return await ctx.db.insert("vendors", { ...args, status: args.status ?? "considering" });
+    const vendorId = await ctx.db.insert("vendors", { ...args, status: args.status ?? "considering" });
+    await recordUserEvent(ctx, {
+      weddingId: args.weddingId,
+      actorId: clerkUserId,
+      action: "create",
+      entity: "vendor",
+      entityId: vendorId,
+    });
+    return vendorId;
   },
 });
 
@@ -52,8 +61,15 @@ export const update = mutation({
   handler: async (ctx, { vendorId, ...patch }) => {
     const vendor = await ctx.db.get(vendorId);
     if (!vendor) throw new Error("Vendor not found");
-    await requireMembership(ctx, vendor.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, vendor.weddingId);
     await ctx.db.patch(vendorId, patch);
+    await recordUserEvent(ctx, {
+      weddingId: vendor.weddingId,
+      actorId: clerkUserId,
+      action: "update",
+      entity: "vendor",
+      entityId: vendorId,
+    });
     return vendorId;
   },
 });
@@ -66,7 +82,7 @@ export const remove = mutation({
   handler: async (ctx, { vendorId }) => {
     const vendor = await ctx.db.get(vendorId);
     if (!vendor) return;
-    await requireMembership(ctx, vendor.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, vendor.weddingId);
 
     const items = await ctx.db
       .query("budgetItems")
@@ -83,5 +99,12 @@ export const remove = mutation({
       await ctx.db.patch(task._id, { vendorId: undefined });
     }
     await ctx.db.delete(vendorId);
+    await recordUserEvent(ctx, {
+      weddingId: vendor.weddingId,
+      actorId: clerkUserId,
+      action: "delete",
+      entity: "vendor",
+      entityId: vendorId,
+    });
   },
 });

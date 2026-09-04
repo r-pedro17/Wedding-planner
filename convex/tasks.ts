@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { taskStatus } from "./schema";
 import { requireMembership } from "./lib/auth";
+import { recordUserEvent } from "./lib/audit";
 import { assertDateOnly, dueState } from "./lib/dates";
 import { requireWeddingVendor } from "./lib/vendors";
 import { taskWithDueState } from "./lib/validators";
@@ -39,11 +40,19 @@ export const create = mutation({
   },
   returns: v.id("tasks"),
   handler: async (ctx, args) => {
-    await requireMembership(ctx, args.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, args.weddingId);
     await requireWeddingVendor(ctx, args.vendorId, args.weddingId);
     if (args.dueDate) assertDateOnly(args.dueDate, "dueDate");
     if (args.title.trim() === "") throw new Error("Task title is required");
-    return await ctx.db.insert("tasks", { ...args, status: args.status ?? "todo" });
+    const taskId = await ctx.db.insert("tasks", { ...args, status: args.status ?? "todo" });
+    await recordUserEvent(ctx, {
+      weddingId: args.weddingId,
+      actorId: clerkUserId,
+      action: "create",
+      entity: "task",
+      entityId: taskId,
+    });
+    return taskId;
   },
 });
 
@@ -61,10 +70,17 @@ export const update = mutation({
   handler: async (ctx, { taskId, ...patch }) => {
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
-    await requireMembership(ctx, task.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, task.weddingId);
     await requireWeddingVendor(ctx, patch.vendorId, task.weddingId);
     if (patch.dueDate) assertDateOnly(patch.dueDate, "dueDate");
     await ctx.db.patch(taskId, patch);
+    await recordUserEvent(ctx, {
+      weddingId: task.weddingId,
+      actorId: clerkUserId,
+      action: "update",
+      entity: "task",
+      entityId: taskId,
+    });
     return taskId;
   },
 });
@@ -75,8 +91,15 @@ export const complete = mutation({
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get(taskId);
     if (!task) throw new Error("Task not found");
-    await requireMembership(ctx, task.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, task.weddingId);
     await ctx.db.patch(taskId, { status: "done" });
+    await recordUserEvent(ctx, {
+      weddingId: task.weddingId,
+      actorId: clerkUserId,
+      action: "complete",
+      entity: "task",
+      entityId: taskId,
+    });
     return taskId;
   },
 });
@@ -87,7 +110,14 @@ export const remove = mutation({
   handler: async (ctx, { taskId }) => {
     const task = await ctx.db.get(taskId);
     if (!task) return;
-    await requireMembership(ctx, task.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, task.weddingId);
     await ctx.db.delete(taskId);
+    await recordUserEvent(ctx, {
+      weddingId: task.weddingId,
+      actorId: clerkUserId,
+      action: "delete",
+      entity: "task",
+      entityId: taskId,
+    });
   },
 });

@@ -7,6 +7,7 @@ import {
   requireOwner,
   requireUserId,
 } from "./lib/auth";
+import { recordUserEvent } from "./lib/audit";
 import { computeTotals, upcomingPayments } from "./lib/budget";
 import { daysBetween, dueState, today } from "./lib/dates";
 import {
@@ -103,6 +104,13 @@ export const create = mutation({
       totalBudgetCents: args.totalBudgetCents,
     });
     await ctx.db.insert("memberships", { weddingId, clerkUserId, role: "owner" });
+    await recordUserEvent(ctx, {
+      weddingId,
+      actorId: clerkUserId,
+      action: "create",
+      entity: "wedding",
+      entityId: weddingId,
+    });
     return weddingId;
   },
 });
@@ -116,8 +124,15 @@ export const update = mutation({
   },
   returns: v.null(),
   handler: async (ctx, { weddingId, ...patch }) => {
-    await requireMembership(ctx, weddingId);
+    const { clerkUserId } = await requireMembership(ctx, weddingId);
     await ctx.db.patch(weddingId, patch);
+    await recordUserEvent(ctx, {
+      weddingId,
+      actorId: clerkUserId,
+      action: "update",
+      entity: "wedding",
+      entityId: weddingId,
+    });
   },
 });
 
@@ -141,7 +156,7 @@ export const addMember = mutation({
   args: { weddingId: v.id("weddings"), clerkUserId: v.string() },
   returns: v.id("memberships"),
   handler: async (ctx, { weddingId, clerkUserId }) => {
-    await requireOwner(ctx, weddingId);
+    const { clerkUserId: actorId } = await requireOwner(ctx, weddingId);
     const existing = await ctx.db
       .query("memberships")
       .withIndex("by_user_and_wedding", (q) =>
@@ -149,7 +164,19 @@ export const addMember = mutation({
       )
       .unique();
     if (existing) return existing._id;
-    return await ctx.db.insert("memberships", { weddingId, clerkUserId, role: "partner" });
+    const membershipId = await ctx.db.insert("memberships", {
+      weddingId,
+      clerkUserId,
+      role: "partner",
+    });
+    await recordUserEvent(ctx, {
+      weddingId,
+      actorId,
+      action: "create",
+      entity: "membership",
+      entityId: membershipId,
+    });
+    return membershipId;
   },
 });
 

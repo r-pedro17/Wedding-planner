@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { requireMembership } from "./lib/auth";
+import { recordUserEvent } from "./lib/audit";
 import { MAX_GUEST_PARTIES, normalizeGuest, totalHeadcount } from "./lib/guests";
 
 const guestDoc = v.object({
@@ -35,14 +36,22 @@ export const create = mutation({
   },
   returns: v.id("guests"),
   handler: async (ctx, args) => {
-    await requireMembership(ctx, args.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, args.weddingId);
     const existing = await ctx.db
       .query("guests")
       .withIndex("by_wedding", (q) => q.eq("weddingId", args.weddingId))
       .take(MAX_GUEST_PARTIES);
     if (existing.length >= MAX_GUEST_PARTIES) throw new Error("Guest list limit reached");
     const guest = normalizeGuest(args);
-    return await ctx.db.insert("guests", { weddingId: args.weddingId, ...guest });
+    const guestId = await ctx.db.insert("guests", { weddingId: args.weddingId, ...guest });
+    await recordUserEvent(ctx, {
+      weddingId: args.weddingId,
+      actorId: clerkUserId,
+      action: "create",
+      entity: "guest",
+      entityId: guestId,
+    });
+    return guestId;
   },
 });
 
@@ -57,8 +66,15 @@ export const update = mutation({
   handler: async (ctx, { guestId, ...input }) => {
     const current = await ctx.db.get(guestId);
     if (!current) throw new Error("Guest not found");
-    await requireMembership(ctx, current.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, current.weddingId);
     await ctx.db.patch(guestId, normalizeGuest(input));
+    await recordUserEvent(ctx, {
+      weddingId: current.weddingId,
+      actorId: clerkUserId,
+      action: "update",
+      entity: "guest",
+      entityId: guestId,
+    });
     return guestId;
   },
 });
@@ -69,8 +85,15 @@ export const remove = mutation({
   handler: async (ctx, { guestId }) => {
     const guest = await ctx.db.get(guestId);
     if (!guest) return null;
-    await requireMembership(ctx, guest.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, guest.weddingId);
     await ctx.db.delete(guestId);
+    await recordUserEvent(ctx, {
+      weddingId: guest.weddingId,
+      actorId: clerkUserId,
+      action: "delete",
+      entity: "guest",
+      entityId: guestId,
+    });
     return null;
   },
 });

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { requireMembership } from "./lib/auth";
+import { recordSystemEvent, recordUserEvent } from "./lib/audit";
 import { isDueWithin, dueState, today } from "./lib/dates";
 import { remainingCents } from "./lib/budget";
 import { formatCents } from "./lib/money";
@@ -28,8 +29,15 @@ export const dismiss = mutation({
   handler: async (ctx, { reminderId }) => {
     const reminder = await ctx.db.get(reminderId);
     if (!reminder) return;
-    await requireMembership(ctx, reminder.weddingId);
+    const { clerkUserId } = await requireMembership(ctx, reminder.weddingId);
     await ctx.db.patch(reminderId, { dismissedAt: Date.now() });
+    await recordUserEvent(ctx, {
+      weddingId: reminder.weddingId,
+      actorId: clerkUserId,
+      action: "dismiss",
+      entity: "reminder",
+      entityId: reminderId,
+    });
   },
 });
 
@@ -48,6 +56,7 @@ export const refreshAll = internalMutation({
     let created = 0;
 
     for (const wedding of weddings) {
+      const before = created;
       const existing = await ctx.db
         .query("reminders")
         .withIndex("by_wedding", (q) => q.eq("weddingId", wedding._id))
@@ -88,6 +97,15 @@ export const refreshAll = internalMutation({
           message: `${task.title} is due ${task.dueDate}.`,
         });
         created += 1;
+      }
+
+      if (created > before) {
+        await recordSystemEvent(ctx, {
+          weddingId: wedding._id,
+          action: "refresh",
+          entity: "reminder",
+          entityId: wedding._id,
+        });
       }
     }
     return { created };

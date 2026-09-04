@@ -4,7 +4,16 @@
  * a handler can never leak a field the schema did not promise.
  */
 import { v } from "convex/values";
-import { budgetItemStatus, membershipRole, taskStatus, vendorStatus } from "../schema";
+import {
+  auditAction,
+  auditActorKind,
+  auditEntity,
+  auditSource,
+  budgetItemStatus,
+  membershipRole,
+  taskStatus,
+  vendorStatus,
+} from "../schema";
 
 export const dueStateValidator = v.union(
   v.literal("none"),
@@ -106,6 +115,19 @@ export const vendorDoc = v.object({
   website: v.optional(v.string()),
   notes: v.optional(v.string()),
   status: vendorStatus,
+});
+
+export const auditEventDoc = v.object({
+  _id: v.id("auditEvents"),
+  _creationTime: v.number(),
+  weddingId: v.id("weddings"),
+  source: auditSource,
+  actorKind: auditActorKind,
+  actorId: v.optional(v.string()),
+  action: auditAction,
+  entity: auditEntity,
+  entityId: v.optional(v.string()),
+  at: v.number(),
 });
 
 export const reminderDoc = v.object({

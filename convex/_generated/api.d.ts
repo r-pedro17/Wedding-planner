@@ -8,9 +8,11 @@
  * @module
  */
 
+import type * as audit from "../audit.js";
 import type * as budgets from "../budgets.js";
 import type * as crons from "../crons.js";
 import type * as guests from "../guests.js";
+import type * as lib_audit from "../lib/audit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_budget from "../lib/budget.js";
 import type * as lib_dates from "../lib/dates.js";
@@ -30,9 +32,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  audit: typeof audit;
   budgets: typeof budgets;
   crons: typeof crons;
   guests: typeof guests;
+  "lib/audit": typeof lib_audit;
   "lib/auth": typeof lib_auth;
   "lib/budget": typeof lib_budget;
   "lib/dates": typeof lib_dates;

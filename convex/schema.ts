@@ -23,6 +23,41 @@ export const vendorStatus = v.union(
 
 export const membershipRole = v.union(v.literal("owner"), v.literal("partner"));
 
+/**
+ * Audit vocabulary. Labels are a closed set so a row can never carry free-form
+ * content, and `source` is derived server-side (never a mutation arg): a normal
+ * UI caller produces only `ui`; the cron path produces `system`; `eve` is
+ * reserved for F4's delegated-auth path and is not yet produced anywhere.
+ */
+export const auditSource = v.union(
+  v.literal("ui"),
+  v.literal("eve"),
+  v.literal("system"),
+);
+
+export const auditActorKind = v.union(v.literal("user"), v.literal("system"));
+
+export const auditAction = v.union(
+  v.literal("create"),
+  v.literal("update"),
+  v.literal("delete"),
+  v.literal("complete"),
+  v.literal("payment"),
+  v.literal("dismiss"),
+  v.literal("refresh"),
+);
+
+export const auditEntity = v.union(
+  v.literal("wedding"),
+  v.literal("membership"),
+  v.literal("budgetCategory"),
+  v.literal("budgetItem"),
+  v.literal("task"),
+  v.literal("vendor"),
+  v.literal("guest"),
+  v.literal("reminder"),
+);
+
 export default defineSchema({
   users: defineTable({
     clerkUserId: v.string(),
@@ -115,4 +150,26 @@ export default defineSchema({
     .index("by_wedding", ["weddingId"])
     .index("by_wedding_and_subject", ["weddingId", "subjectId"])
     .index("by_pending", ["notifiedAt"]),
+
+  /**
+   * Immutable, wedding-scoped audit trail (F3). Written in the same
+   * transaction as each important successful mutation. Records only ids and
+   * controlled labels — never prompts, notes, contacts, money amounts, tokens,
+   * or document snapshots. There is deliberately no mutation to alter a row.
+   */
+  auditEvents: defineTable({
+    weddingId: v.id("weddings"),
+    source: auditSource,
+    actorKind: auditActorKind,
+    // Clerk user id for user actions; absent for the system (cron) path.
+    actorId: v.optional(v.string()),
+    action: auditAction,
+    entity: auditEntity,
+    // Stringified id of the affected row (may span tables), or absent.
+    entityId: v.optional(v.string()),
+    // Server wall-clock at write time (`Date.now()`).
+    at: v.number(),
+  })
+    .index("by_wedding", ["weddingId"])
+    .index("by_wedding_and_time", ["weddingId", "at"]),
 });
