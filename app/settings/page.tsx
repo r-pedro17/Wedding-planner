@@ -9,16 +9,15 @@ import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { formatCents, parseAmountToCents } from "@/convex/lib/money";
 import { YourUserId } from "@/components/your-user-id";
+import { AddPartner, AddPartnerHint } from "@/components/add-partner";
 
 export default function SettingsPage() {
   const wedding = useWedding();
   const createWedding = useMutation(api.weddings.create);
   const updateWedding = useMutation(api.weddings.update);
-  const addMember = useMutation(api.weddings.addMember);
   const members = useQuery(api.weddings.members, wedding ? { weddingId: wedding._id } : "skip");
 
   const [form, setForm] = useState<{ name: string; weddingDate: string; budget: string } | null>(null);
-  const [partnerId, setPartnerId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -103,9 +102,7 @@ export default function SettingsPage() {
       {wedding ? (
         <Card>
           <CardTitle>Who can see this</CardTitle>
-          <CardHint className="mt-1">
-            Both of you can manage everything. Add your partner with their Clerk user id.
-          </CardHint>
+          <AddPartnerHint members={members} />
           <YourUserId />
           <ul className="mt-3 space-y-1 text-sm text-stone-600">
             {members?.map((member) => (
@@ -114,27 +111,7 @@ export default function SettingsPage() {
               </li>
             ))}
           </ul>
-          <div className="mt-3 flex gap-2">
-            <Input
-              placeholder="user_123…"
-              value={partnerId}
-              onChange={(e) => setPartnerId(e.target.value)}
-            />
-            <Button
-              disabled={partnerId.trim() === ""}
-              onClick={async () => {
-                try {
-                  setError(null);
-                  await addMember({ weddingId: wedding._id, clerkUserId: partnerId.trim() });
-                  setPartnerId("");
-                } catch (cause) {
-                  setError(cause instanceof Error ? cause.message : "Could not add partner");
-                }
-              }}
-            >
-              Add
-            </Button>
-          </div>
+          <AddPartner weddingId={wedding._id} members={members} />
         </Card>
       ) : null}
     </div>
