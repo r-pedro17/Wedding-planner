@@ -1,4 +1,4 @@
-Before changing this repository, read `AGENTS.md`, then the four documents in
+Before changing this repository, read `AGENTS.md`, then the documents in
 `docs/README.md` in their stated order. `AGENTS.md` defines the commands,
 architecture, scope boundaries, and repository conventions. Do not work from
 this file alone.
@@ -17,6 +17,5 @@ Convex agent skills for common tasks can be installed by running
 
 <!-- convex-ai-end -->
 
-@.tickets/CONTRACT.md
 @.tickets/PROJECT.md
 @.tickets/LOCK.md
