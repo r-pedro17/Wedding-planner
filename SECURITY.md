@@ -115,12 +115,14 @@ reach, then redeploy. Rewriting history does not revoke a credential.
 
 ## Known gaps
 
-The repository has automated pure-domain tests but does not yet have complete
-Convex function authorization tests or end-to-end browser coverage. Eve still has placeholder browser
-authentication and an environment-level Convex token rather than proven
-request-scoped delegation. Durable audit events, privacy-reviewed production
-telemetry with tested monitors, and a proved backup/restore drill are not yet in
-place.
+The repository has automated pure-domain tests and a complete four-identity
+Convex function authorization suite (foundation gates F0–F1), and it enforces and
+asserts the production CSP and security header policy (F2). It does not yet have
+end-to-end browser coverage. Eve still has placeholder browser authentication and
+an environment-level Convex token rather than proven request-scoped delegation
+(F4). Durable audit events (F3, the current gate), privacy-reviewed production
+telemetry with tested monitors (F5), and a proved backup/restore drill (F6) are
+not yet in place.
 Branch-rule enforcement depends on the GitHub repository plan and settings;
 workflows provide evidence but may not technically prevent a direct push. These
 are proof gaps, not completed controls; product-flow gaps remain centralized in

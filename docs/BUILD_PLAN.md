@@ -12,23 +12,30 @@ authoritative capability requirements.
 
 ## Current implementation status
 
-As of August 2026, the application spine, authentication, persistent Convex
-data, Dashboard, basic Budget, basic Planner, vendor records, Clerk-user-id-based
-couple sharing,
-and a deliberately narrow guest headcount are implemented. Pure money, date,
-budget, and guest validation logic has automated coverage, and
-the production Next.js build passes.
+The application spine, authentication, persistent Convex data, Dashboard, basic
+Budget, basic Planner, vendor records, Clerk-user-id-based couple sharing, and a
+deliberately narrow guest headcount are implemented. Pure money, date, budget,
+and guest validation logic has automated coverage, and the production Next.js
+build passes.
+
+Foundation gate progress: **F0–F2 are complete and shipped on `main`.** F0's
+four-identity `convex-test` harness and authorization matrix are in place; F1's
+Convex authorization is proven (every public function carries argument and return
+validators, membership management is owner-only, and cross-wedding access is
+denied by tests); and F2's Content Security Policy and security headers are
+enforced in production with automated header assertions. **F3 (durable audit
+events) is the current gate** and has not started. F4–F7 remain ahead of it.
 
 The non-Eve UI is not yet a complete V1: budget items, tasks, and vendors do not
 offer all documented edit/link fields; destructive UI actions need safer
-confirmation and error handling; and Convex functions plus full browser flows do
-not yet have automated coverage. Treat every unchecked proof point below as a
-requirement to verify, not as a claim that it has passed.
+confirmation and error handling; and full browser (end-to-end) flows do not yet
+have automated coverage. Treat every unchecked proof point below as a requirement
+to verify, not as a claim that it has passed.
 
-Before more product work, the application must pass the foundation gate below.
+Before more product work, the application must finish the foundation gate below.
 Eve exists in the repo, but its production browser channel still has placeholder
-authentication and its Convex client uses one environment-level token. Neither
-is an acceptable production identity boundary.
+authentication and its Convex client uses one environment-level token (addressed
+by F4). Neither is an acceptable production identity boundary.
 
 ---
 

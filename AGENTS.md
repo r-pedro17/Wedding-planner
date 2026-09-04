@@ -9,7 +9,9 @@ wedding: a dashboard of what needs attention now, a simple budget, a task +
 vendor planner, a guest headcount, and **Eve**, an assistant that reads and writes the same data
 through explicit tools. Next.js App Router + TypeScript on the front, **Convex**
 as the single source of truth, **Clerk** for auth. Eve runs on the `eve`
-framework in `agent/`. No custom backend server.
+framework in `agent/`. No custom backend server. `docs/NORTH_STAR.md` holds the
+authoritative stack list (Vercel, Tailwind, shadcn/ui, Vercel AI Gateway, Axiom,
+Convex File Storage included).
 
 Product intent and scope live in `docs/` — read them before changing code:
 `docs/NORTH_STAR.md`, `docs/PRODUCT_SPEC.md`, `docs/BUILD_PLAN.md` (build stages
@@ -61,7 +63,7 @@ Windows workstation, if Node is not already on `PATH`, use
 - The app must render **without Clerk/Convex env vars** — features degrade, nothing throws.
 - State: Convex React hooks for server state; auth state via Clerk providers.
 - Smallest complete change → focused tests → broader tests → verify the real user flow. No speculative refactors. No abstraction before two real call sites. Obvious code over clever.
-- **V1 scope is Dashboard + Budget + Planner + Guests + Eve.** Guests means only invitation parties, optional notes, and derived headcount. Not in V1: RSVP, seating, wedding website, registry, marketplace, payments, email ingestion, native mobile, proactive Eve automation. Don't expand scope; don't add planning docs.
+- **V1 scope is Dashboard + Budget + Planner + Guests + Eve.** Guests means only invitation parties, optional notes, and derived headcount. `docs/NORTH_STAR.md` is the single source for what is in and explicitly not in V1 (see its "V1 scope" and "Explicitly not in V1" lists) — don't expand scope; don't add planning docs.
 - `.env.local` is never committed; keep `.env.example` current.
 - GitHub CI is the clean-checkout contract: quality, dependency health, and
   changed-code Fallow checks run independently. Keep ordinary CI free of live
