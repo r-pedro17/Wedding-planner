@@ -72,6 +72,13 @@ Windows workstation, if Node is not already on `PATH`, use
   must carry `{"aud": "convex"}`, and `CLERK_JWT_ISSUER_DOMAIN` lives on the
   Convex deployment, not in `.env.local`. Get either wrong and the app is
   silently signed-out with no error — see `convex/auth.config.ts`.
+- **One Clerk instance (development) is used everywhere** — the same dev Clerk
+  keys and `CLERK_JWT_ISSUER_DOMAIN` back both the local dev Convex deployment
+  and the production Convex deployment behind Vercel. There is no separate prod
+  Clerk instance for V1. So `CLERK_JWT_ISSUER_DOMAIN` must be set on *both*
+  Convex deployments (dev and `--prod`) to the same dev issuer, and Vercel uses
+  the same dev `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` / `CLERK_SECRET_KEY`.
+  `npx convex deploy` refuses to push until the target deployment has it set.
 
 <!-- convex-ai-start -->
 
